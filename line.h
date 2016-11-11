@@ -20,26 +20,5 @@ class Line
     ElfBinary* getElfBinary() { return &m_elfBinary; }
 };
 
-class ElfProcess
-{
- private:
-    Line* m_line;
-
-    uint64_t m_fs;
-    uint64_t m_brk;
-
-    static void signalHandler(int sig, siginfo_t* info, void* contextptr);
-    void trap(siginfo_t* info, ucontext_t* ucontext);
-    void error(int sig, siginfo_t* info, ucontext_t* ucontext);
-
-    bool execSyscall();
-
- public:
-    ElfProcess(Line* line);
-    ~ElfProcess();
-
-    bool start();
-};
-
 
 #endif

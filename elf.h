@@ -70,6 +70,7 @@
 #define PT_NOTE			4
 #define PT_SHLIB		5
 #define PT_PHDR			6
+#define PT_TLS			7
 
 #define PF_X			0x01
 #define PF_W			0x02

@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 
 #include "elfbinary.h"
+#include "utils.h"
 
 typedef int(*entryFunc_t)();
 
@@ -30,6 +31,8 @@ bool ElfBinary::load(const char* path)
         printf("ElfBinary::load: Unable to open %s\n", path);
         return false;
     }
+
+    m_path = strdup(path);
 
     fseek(fp, 0, SEEK_END);
     long size = ftell(fp);
@@ -140,6 +143,41 @@ return &(symtab[i]);
     return NULL;
 }
 
+void ElfBinary::checkSymbol(const char* sym)
+{
+    Elf64_Shdr* symtabSection = findSection(".symtab");
+    if (symtabSection == NULL)
+    {
+        return;
+    }
+
+    Elf64_Sym* symtab = (Elf64_Sym*)(m_image + symtabSection->sh_offset);
+
+    int count = symtabSection->sh_size / sizeof(Elf64_Sym);
+    int i;
+    for (i = 0; i < count; i++)
+    {
+        const char* name = m_stringTable + symtab[i].st_name;
+
+/*
+        printf("ElfBinary::findSymbol: %d: st_name=0x%x (%s), info=0x%x, shndx=0x%x, st_value=0x%llx\n",
+            i,
+            symtab[i].st_name,
+            name,
+            symtab[i].st_info,
+            symtab[i].st_shndx,
+            symtab[i].st_value);
+*/
+if (!strcmp(sym, name))
+{
+uint64_t* valueAddr = (uint64_t*)(symtab[i].st_value);
+printf("ElfBinary::checkSymbol: %s: value=0x%llx, valueAtAddr=0x%llx\n", name, symtab[i].st_value, *valueAddr);
+}
+    }
+
+}
+
+
 bool ElfBinary::map()
 {
     Elf64_Phdr* phdr = (Elf64_Phdr*)(m_image + m_header->e_phoff);
@@ -147,27 +185,24 @@ bool ElfBinary::map()
     int i;
     for (i = 0; i < m_header->e_phnum; i++)
     {
-        //printf("Program Header: %d: type=0x%x\n", i, phdr[i].p_type);
+        printf("Program Header: %d: type=0x%x, flags=0x%x\n", i, phdr[i].p_type, phdr[i].p_flags);
         if (phdr[i].p_type == PT_LOAD)
         {
             uint64_t start = (phdr[i].p_vaddr & ~0xfff);
             size_t len = ALIGN(phdr[i].p_memsz + ELF_PAGEOFFSET(phdr->p_vaddr), 4096);
-/*
-            printf(
-                "Program Header: %d: 0x%llx-0x%llx: offset=0x%llx, vaddr=0x%llx, filesz=%lld, memsz=%lld (0x%lx)\n",
-                i,
-                start,
-                start + len,
-                phdr[i].p_offset,
-                start,
-                phdr[i].p_filesz,
-                phdr[i].p_memsz,
-                len);
-*/
+
+            printf("ElfBinary::map: Specified: 0x%llx-0x%llx, Aligned: 0x%llx, 0x%llx\n", phdr[i].p_vaddr, phdr[i].p_vaddr + phdr[i].p_memsz, start, start + len);
+
+            int prot = PROT_READ | PROT_WRITE;
+            if (phdr[i].p_flags & PF_X)
+            {
+                prot |= PROT_EXEC;
+            }
+
             void* maddr = mmap(
                 (void*)start,
                 len,
-                PROT_READ | PROT_WRITE | PROT_EXEC,
+                prot,
                 MAP_FIXED | MAP_ANON | MAP_PRIVATE,
                 -1,
                 0);
@@ -180,11 +215,32 @@ bool ElfBinary::map()
             }
 
             memcpy(
-                (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
+                (void*)(phdr[i].p_vaddr),
                 m_image + phdr[i].p_offset,
                 phdr[i].p_filesz);
         }
+        else if (phdr[i].p_type == PT_TLS)
+{
+//memset((void*)(phdr[i].p_vaddr), 0, phdr[i].p_memsz);
+            memcpy(
+                (void*)(phdr[i].p_vaddr),
+                m_image + phdr[i].p_offset,
+                phdr[i].p_filesz);
+hexdump((char*)(phdr[i].p_vaddr), phdr[i].p_filesz);
+}
     }
+
+    Elf64_Shdr* bssSection = findSection(".bss");
+    if (bssSection != NULL)
+    {
+        printf("ElfBinary::map: Clearing BSS: addr=0x%llx-0x%llx, size=%d\n", bssSection->sh_addr, bssSection->sh_addr + bssSection->sh_size - 1, bssSection->sh_size);
+        memset((void*)bssSection->sh_addr, 0x0, bssSection->sh_size);
+    }
+    else
+    {
+        printf("ElfBinary::map: Failed to find BSS section\n");
+    }
+
     return true;
 }
 
@@ -206,34 +262,61 @@ bool ElfBinary::map()
                 ...
                                                 NULL
 */
-bool ElfBinary::entry(int argc, char** argv, char** envp)
+
+static void exitfunction()
+{
+}
+
+void ElfBinary::entry(int argc, char** argv, char** envp)
 {
 //const char* argv0 = "hello";
+    //register entryFunc_t entry __asm__("rdi"); // Prevent clashes with rdx
+    //entry = (entryFunc_t)(m_header->e_entry);
+
     entryFunc_t entry = (entryFunc_t)(m_header->e_entry);
+    char randbytes[16];
+    int i;
+    for (i = 0; i < 16; i++)
+    {
+        randbytes[i] = i;
+    }
 
-        char randbytes[16];
-        int i;
-        for (i = 0; i < 16; i++)
-        {
-            randbytes[i] = i;
-        }
+    // Write the standard stack entry details
+    uint64_t* stack = (uint64_t*)alloca(4096);
+    uint64_t* stackpos = stack;
+    *(stackpos++) = argc;
+    for (i = 0; i < argc; i++)
+    {
+        *(stackpos++) = (uint64_t)argv[i];
+    }
+    *(stackpos++) = NULL;
+    while (*envp != NULL)
+    {
+        *(stackpos++) = (uint64_t)*(envp++);
+    }
+    *(stackpos++) = NULL;
 
-asm volatile (
-"movq $1, 0(%%rsp)\n" // argc
-"movq %0, 8(%%rsp)\n" // argv[0]
-"movq $0, 16(%%rsp)\n" // argv[argc] = NULL
-"movq $0, 24(%%rsp)\n" // NULL
-"movq %1, 32(%%rsp)\n" // envp[0]
-"movq $0, 40(%%rsp)\n" // NULL
-"movq $25, 48(%%rsp)\n" // aux - AT_RANDOM
-"movq %2, 56(%%rsp)\n" // aux - random bytes
-"jmp *%3\n"
-: : "r" (argv[0]), "r" (envp[0]), "r" (randbytes), "r" (entry)
-);
+    // AUX
+    *(stackpos++) = AT_PHDR;
+    *(stackpos++) = (uint64_t)(m_image + m_header->e_phoff);
+    *(stackpos++) = AT_PHENT;
+    *(stackpos++) = (uint64_t)(m_image + m_header->e_phentsize);
+    *(stackpos++) = AT_PHNUM;
+    *(stackpos++) = (uint64_t)(m_image + m_header->e_phnum);
+    *(stackpos++) = AT_ENTRY;
+    *(stackpos++) = (uint64_t)(m_header->e_entry);
+    *(stackpos++) = AT_PAGESZ;
+    *(stackpos++) = 4096l;
+    *(stackpos++) = AT_RANDOM;
+    *(stackpos++) = (uint64_t)randbytes;
 
-    //printf("ElfBinary::entry: Calling entry %p\n", entry);
-    entry();
+    *(stackpos++) = AT_NULL;
 
-    return true;
+    asm volatile (
+        "movq %0, %%rsp\n"
+        "movq %2, %%rdx\n"
+        "jmp *%1\n"
+        : : "r" (stack), "r" (entry), "r" (exitfunction) : "rdx", "rsp"
+    );
 }
 

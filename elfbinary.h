@@ -8,7 +8,7 @@
 class ElfBinary
 {
  private:
-
+    char* m_path;
     char* m_image;
     Elf64_Ehdr* m_header;
     char* m_shStringTable;
@@ -23,10 +23,15 @@ class ElfBinary
 
     bool load(const char* path);
     Elf64_Sym* findSymbol(const char* sym);
+    void checkSymbol(const char* sym);
 
     bool map();
 
-    bool entry(int argc, char** argv, char** envp);
+    void entry(int argc, char** argv, char** envp) __attribute__((noreturn));
+
+    char* getPath() { return m_path; }
+
+    //Elf64_Phdr* getPHdr() { return m_header
 };
 
 #endif
