@@ -1,3 +1,22 @@
+/*
+ * line - Line Is Not an Emulator
+ * Copyright (C) 2016 GeekProjects.com
+ *
+ * This file is part of line.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,14 +72,15 @@ bool ElfProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
         uint64_t value1 = readFS64(addr);
 
         uint64_t value2 = readRegister(reg, rexR, 32, ucontext);
-if (addr == 0x30)
-{
-value1 = 0;
-}
+        if (addr == 0x30)
+        {
+            value1 = 0;
+        }
+
 #if 0
         printf("ElfProcess::execFSInstruction: XOR %%fs:0x%llx(0x%llx), reg%d(0x%llx)\n", addr, value1, reg, value2);
 #endif
-value1 ^= value2;
+        value1 ^= value2;
 #if 0
         printf("ElfProcess::execFSInstruction: XOR  -> 0x%llx\n", value1);
 #endif
