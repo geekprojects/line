@@ -3,35 +3,73 @@
 
 #include "elf.h"
 
+#include <vector>
+
 #define ALIGN(_v, _a) (((_v) + _a - 1) & ~(_a - 1))
+
+class ElfExec;
+class ElfLibrary;
+class LibraryEntry;
 
 class ElfBinary
 {
- private:
+ protected:
+    ElfExec* m_exec;
+
     char* m_path;
     char* m_image;
     Elf64_Ehdr* m_header;
     char* m_shStringTable;
     char* m_stringTable;
 
+    std::vector<LibraryEntry*> m_libraries;
+    uint64_t m_tlsBase;
+    int m_tlsSize;
+
     Elf64_Shdr* findSection(const char* name);
+
+    bool readDynamicHeader(Elf64_Phdr* header);
+
+    void relocateRela(ElfLibrary* lib, Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab, const char* strtab);
 
  public:
 
     ElfBinary();
-    ~ElfBinary();
+    virtual ~ElfBinary();
 
     bool load(const char* path);
+
+    const char* getString(int name);
     Elf64_Sym* findSymbol(const char* sym);
-    void checkSymbol(const char* sym);
 
-    bool map();
+    virtual bool map() = 0;
 
-    void entry(int argc, char** argv, char** envp) __attribute__((noreturn));
+    bool loadLibraries();
+    virtual bool relocate();
 
     char* getPath() { return m_path; }
 
-    //Elf64_Phdr* getPHdr() { return m_header
+    int getTLSSize() { return m_tlsSize; }
+    void initTLS(void* tls, uint64_t tlsbase);
+    uint64_t getTLSBase();
+};
+
+class Library : public ElfBinary
+{
+ protected:
+    // Fields from the DYNAMIC header
+    int m_dynNameIdx;
+    const char* m_dynStrTab;
+
+    uint64_t m_base;
+
+ public:
+    Library();
+    virtual ~Library();
+
+    void setDynNameIndex(int idx) { m_dynNameIdx = idx; }
+    void setDynStrTab(const char* strtab) { m_dynStrTab = strtab; }
+    const char* getDynName() { return m_dynStrTab + m_dynNameIdx; }
 };
 
 #endif

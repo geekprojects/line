@@ -3,12 +3,12 @@
 
 #include <signal.h>
 
-#include "line.h"
+#include "elfexec.h"
 
 class ElfProcess
 {
  private:
-    Line* m_line;
+    ElfExec* m_elf;
 
     uint64_t m_fs;
     uint64_t m_brk;
@@ -49,10 +49,12 @@ class ElfProcess
     }
 
  public:
-    ElfProcess(Line* line);
+    ElfProcess(ElfExec* exec);
     ~ElfProcess();
 
     bool start();
+
+    uint64_t getFS() { return m_fs; };
 };
 
 

@@ -1,12 +1,12 @@
 #ifndef __LINE_H_
 #define __LINE_H_
 
-#include "elfbinary.h"
+#include "elfexec.h"
 
 class Line
 {
  private:
-    ElfBinary m_elfBinary;
+    ElfExec m_elfBinary;
 
     pid_t m_elfPid;
  public:
@@ -17,7 +17,7 @@ class Line
 
     bool execute();
 
-    ElfBinary* getElfBinary() { return &m_elfBinary; }
+    ElfExec* getElfBinary() { return &m_elfBinary; }
 };
 
 

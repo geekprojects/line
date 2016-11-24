@@ -132,6 +132,21 @@
 #define R_386_GOTOFF		9
 #define R_386_GOTPC		10
 
+/* AMD x86-64 relocations.  */
+#define R_X86_64_NONE           0       /* No reloc */
+#define R_X86_64_64             1       /* Direct 64 bit  */
+#define R_X86_64_PC32           2       /* PC relative 32 bit signed */
+#define R_X86_64_GOT32          3       /* 32 bit GOT entry */
+#define R_X86_64_PLT32          4       /* 32 bit PLT address */
+#define R_X86_64_COPY           5       /* Copy symbol at runtime */
+#define R_X86_64_GLOB_DAT       6       /* Create GOT entry */
+#define R_X86_64_JUMP_SLOT      7       /* Create PLT entry */
+#define R_X86_64_RELATIVE       8       /* Adjust by program base */
+#define R_X86_64_GOTPCREL       9       /* 32 bit signed PC relative
+                                           offset to GOT */
+#define R_X86_64_TPOFF64        18      /* Offset in initial TLS block */
+#define R_X86_64_IRELATIVE      37      /* Adjust indirectly by program base */
+
 #define DT_NULL     0
 #define DT_NEEDED   1
 #define DT_PLTRELSZ 2
@@ -147,6 +162,7 @@
 #define DT_INIT     12
 #define DT_FINI     13
 #define DT_SONAME   14
+#define DT_JMPREL       23              /* Address of PLT relocs */
 
 typedef uint32_t Elf32_Addr;
 typedef uint16_t Elf32_Half;
@@ -277,6 +293,13 @@ typedef struct {
     Elf32_Sword r_addend;
 } Elf32_Rela;
 
+typedef struct
+{
+  Elf64_Addr    r_offset;               /* Address */
+  Elf64_Xword   r_info;                 /* Relocation type and symbol index */
+  Elf64_Sxword  r_addend;               /* Addend */
+} Elf64_Rela;
+
 typedef struct {
     Elf32_Sword d_tag;
     union {
@@ -284,6 +307,16 @@ typedef struct {
         Elf32_Addr d_ptr;
     } d_un;
 } Elf32_Dyn;
+
+typedef struct
+{
+  Elf64_Sxword  d_tag;                  /* Dynamic entry type */
+  union
+    {
+      Elf64_Xword d_val;                /* Integer value */
+      Elf64_Addr d_ptr;                 /* Address value */
+    } d_un;
+} Elf64_Dyn;
 
 typedef struct
 {

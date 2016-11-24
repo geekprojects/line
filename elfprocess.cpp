@@ -15,15 +15,25 @@
 #include <mach/mach_interface.h>
 
 #include "elfprocess.h"
+#include "elflibrary.h"
 #include "utils.h"
+
+using namespace std;
+
+#undef DEBUG
 
 static ElfProcess* g_elfProcess = NULL;
 
-ElfProcess::ElfProcess(Line* line)
+uint64_t tls_get_addr()
+{
+return g_elfProcess->getFS();
+}
+
+ElfProcess::ElfProcess(ElfExec* exec)
 {
     g_elfProcess = this;
 
-    m_line = line;
+    m_elf = exec;
 }
 
 bool ElfProcess::start()
@@ -47,11 +57,34 @@ bool ElfProcess::start()
     environ[2] = NULL;
 
     // Set up brk pointer
-    uint64_t end = m_line->getElfBinary()->findSymbol("_end")->st_value;
-    printf("line: child: sys_brk: end=0x%llx\n", end);
+    uint64_t end = m_elf->findSymbol("_end")->st_value;
+#ifdef DEBUG
+    printf("ElfProcess::start: sys_brk: end=0x%llx\n", end);
+#endif
     m_brk = ALIGN(end, 4096);
 
-    m_fs = 0xdeadbeef;
+    // Set up TLS
+
+    int tlssize = m_elf->getTLSSize();
+    map<string, ElfLibrary*> libs = m_elf->getLibraries();
+    map<string, ElfLibrary*>::iterator it;
+    for (it = libs.begin(); it != libs.end(); it++)
+    {
+        tlssize += it->second->getTLSSize();
+    }
+#ifdef DEBUG
+    printf("ElfProcess::start: tlssize=%d\n", tlssize);
+#endif
+
+    m_fs = (uint64_t)malloc(tlssize);
+    int tlspos = m_elf->getTLSSize();
+    for (it = libs.begin(); it != libs.end(); it++)
+    {
+        it->second->initTLS((void*)(m_fs + tlspos), tlspos);
+        tlspos += it->second->getTLSSize();
+    }
+
+    m_elf->relocate();
 
     // Set up args
     // 0 "hello"
@@ -60,11 +93,14 @@ bool ElfProcess::start()
     elfArgv[0] = (char*)"/bin/hello";
     //elfArgv[1] = (char*)environ;
 
+#ifdef DEBUG
+    printf("ElfProcess::start: suspending...\n");
+#endif
     // Wait for our parent to enable single step tracing etc
     task_suspend(mach_task_self());
 
     // Execute the ELF (Note, no Elves were harmed...)
-    m_line->getElfBinary()->entry(1, elfArgv, environ);
+    m_elf->entry(1, elfArgv, environ);
 
     return true;
 }
@@ -126,6 +162,7 @@ void ElfProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 
     //uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip);
     //printf("ElfProcess::error: %p: 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
+fflush(stdout);
 exit(1);
 }
 
