@@ -28,7 +28,9 @@ bool ElfLibrary::map()
 {
     int i;
 
+#ifdef DEBUG
     printf("ElfLibrary::map: %s\n", m_path);
+#endif
 
     Elf64_Phdr* phdr = (Elf64_Phdr*)(m_image + m_header->e_phoff);
 
@@ -59,7 +61,11 @@ bool ElfLibrary::map()
         }
     }
 
-    printf("ElfLibrary::map: loadMin=0x%x, loadMax=0x%x\n", loadMin, loadMax);
+#ifdef DEBUG
+    printf("ElfLibrary::map: loadMin=0x%llx, loadMax=0x%llx\n", loadMin, loadMax);
+#endif
+
+    // Allocate a base location for this library now we know how big it is
     m_base = (uint64_t)mmap(
         (void*)0x40000000,
         loadMax,
@@ -68,6 +74,7 @@ bool ElfLibrary::map()
         -1,
         0);
  
+    // Now we have a base, we can copy the library to where its new home
     for (i = 0; i < m_header->e_phnum; i++)
     {
         if (phdr[i].p_type == PT_LOAD)
@@ -77,6 +84,7 @@ bool ElfLibrary::map()
             size_t len = ALIGN(phdr[i].p_memsz + ELF_PAGEOFFSET(phdr->p_vaddr), 4096);
             start += m_base;
 
+#ifdef DEBUG
             printf(
                 "ElfLibrary::map: Specified: 0x%llx-0x%llx, Remapped: 0x%llx, 0x%llx, Copying to: 0x%llx, 0x%llx\n",
                 phdr[i].p_vaddr,
@@ -85,6 +93,7 @@ bool ElfLibrary::map()
                 start + len,
                 start,
                 start + phdr[i].p_filesz);
+#endif
 
             memcpy(
                 (void*)start,
@@ -104,11 +113,13 @@ bool ElfLibrary::map()
     Elf64_Shdr* bssSection = findSection(".bss");
     if (bssSection != NULL)
     {
+#ifdef DEBUG
         printf(
             "ElfLibrary::map: Clearing BSS: addr=0x%llx-0x%llx, size=%llu\n",
             bssSection->sh_addr,
             bssSection->sh_addr + bssSection->sh_size - 1,
             bssSection->sh_size);
+#endif
         memset((void*)(m_base + bssSection->sh_addr), 0x0, bssSection->sh_size);
     }
     else

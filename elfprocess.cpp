@@ -187,12 +187,15 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 #endif
 
     uint8_t* addr = (uint8_t*)info->si_addr;
-if (addr == 0)
-{
-    printf("ElfProcess::trap: addr=%x\n", addr);
+
+    // Save ourselves a segfault
+    if (addr == 0)
+    {
+        printf("ElfProcess::trap: addr=%p\n", addr);
         printregs(ucontext);
-exit(1);
-}
+        exit(1);
+    }
+
 #ifdef DEBUG
     printf("ElfProcess::trap: %x: 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
 #endif

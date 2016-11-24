@@ -263,7 +263,9 @@ bool ElfBinary::loadLibraries()
 
         string name = string(lib->getDynName());
         string libpath = string("root/lib/") + name;
+#ifdef DEBUG
         printf("ElfBinary::loadLibraries: %s -> %s\n", name.c_str(), libpath.c_str());
+#endif
 
         if (name == "ld-linux-x86-64.so.2")
         {
@@ -408,7 +410,7 @@ void ElfBinary::relocateRela(ElfLibrary* lib, Elf64_Rela* rela, uint64_t base, E
                     "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> symbol value=0x%llx\n",
                     symbol->st_value);
 #endif
-                if (symbol->st_value != NULL)
+                if (symbol->st_value != 0)
                 {
                     value = lib->getBase() + symbol->st_value;
                 }

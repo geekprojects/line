@@ -50,18 +50,22 @@ bool ElfExec::map()
 
     for (i = 0; i < m_header->e_phnum; i++)
     {
-        printf("ElfBinary::map: Program Header: %d: type=0x%x, flags=0x%x\n", i, phdr[i].p_type, phdr[i].p_flags);
+#ifdef DEBUG
+        printf("ElfExec::map: Program Header: %d: type=0x%x, flags=0x%x\n", i, phdr[i].p_type, phdr[i].p_flags);
+#endif
         if (phdr[i].p_type == PT_LOAD)
         {
             uint64_t start = (phdr[i].p_vaddr & ~0xfff);
             size_t len = ALIGN(phdr[i].p_memsz + ELF_PAGEOFFSET(phdr->p_vaddr), 4096);
 
+#ifdef DEBUG
             printf(
-                "ElfBinary::map: Specified: 0x%llx-0x%llx, Aligned: 0x%llx, 0x%llx\n",
+                "ElfExec::map: Specified: 0x%llx-0x%llx, Aligned: 0x%llx, 0x%llx\n",
                 phdr[i].p_vaddr,
                 phdr[i].p_vaddr + phdr[i].p_memsz,
                 start,
                 start + len);
+#endif
 
             int prot = PROT_READ | PROT_WRITE;
             if (phdr[i].p_flags & PF_X)
@@ -86,7 +90,7 @@ bool ElfExec::map()
 
             if (maddr == (void*)-1)
             {
-                printf("ElfBinary::map: Program Header: %d:  -> maddr=%p, errno=%d\n", i, maddr, err);
+                printf("ElfExec::map: Program Header: %d:  -> maddr=%p, errno=%d\n", i, maddr, err);
                 return 1;
             }
 
@@ -108,16 +112,18 @@ bool ElfExec::map()
     Elf64_Shdr* bssSection = findSection(".bss");
     if (bssSection != NULL)
     {
+#ifdef DEBUG
         printf(
-            "ElfBinary::map: Clearing BSS: addr=0x%llx-0x%llx, size=%llu\n",
+            "ElfExec::map: Clearing BSS: addr=0x%llx-0x%llx, size=%llu\n",
             bssSection->sh_addr,
             bssSection->sh_addr + bssSection->sh_size - 1,
             bssSection->sh_size);
+#endif
         memset((void*)bssSection->sh_addr, 0x0, bssSection->sh_size);
     }
     else
     {
-        printf("ElfBinary::map: Failed to find BSS section\n");
+        printf("ElfExec::map: Failed to find BSS section\n");
     }
     return true;
 }

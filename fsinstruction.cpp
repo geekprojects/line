@@ -253,7 +253,7 @@ uint64_t ElfProcess::readRegister(int reg, int rexB, int size, ucontext_t* ucont
     uint64_t value = 0;
     if (rexB == 0)
     {
-        char* regname = "?";
+        const char* regname = "?";
         switch (reg)
         {
             case 0:
@@ -332,7 +332,7 @@ uint64_t ElfProcess::readRegister(int reg, int rexB, int size, ucontext_t* ucont
 
 void ElfProcess::writeRegister(int reg, int rexB, int size, uint64_t value, ucontext_t* ucontext)
 {
-    char* regname = "?";
+    const char* regname = "?";
     if (rexB == 0)
     {
         switch (reg)
