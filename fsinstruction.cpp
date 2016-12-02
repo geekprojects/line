@@ -25,6 +25,8 @@
 
 #include "elfprocess.h"
 
+#define DEBUG
+
 #define FETCH_NEXT() *(m_rip++)
 #define FETCH_NEXT32() *(m_rip++)
 #define FETCH_MODRM() {uint8_t modrm = FETCH_NEXT(); mod = (modrm >> 7) & 0x3; rm = modrm & 7; reg = (modrm >> 3) & 7; }
@@ -34,7 +36,7 @@ bool ElfProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
     m_rip = rip;
 
     uint8_t next = FETCH_NEXT();
-#if 0
+#ifdef DEBUG
     printf("ElfProcess::execFSInstruction: next=0x%x\n", next);
 #endif
 
@@ -51,7 +53,7 @@ bool ElfProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
         rexB = (next >> 0) & 1;
 
         next = FETCH_NEXT();
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction:  -> REX prefix: W=%d, R=%d, X=%d, B=%d\n", rexW, rexR, rexX, rexB);
         printf("ElfProcess::execFSInstruction: next=0x%x\n", next);
 #endif
@@ -64,7 +66,7 @@ bool ElfProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
     if (next == 0x33) // XOR
     {
         FETCH_MODRM();
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: XOR: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
 #endif
         int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
@@ -77,19 +79,27 @@ bool ElfProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
             value1 = 0;
         }
 
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: XOR %%fs:0x%llx(0x%llx), reg%d(0x%llx)\n", addr, value1, reg, value2);
 #endif
         value1 ^= value2;
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: XOR  -> 0x%llx\n", value1);
 #endif
+
+        // TODO: Set more flags!
+        ucontext->uc_mcontext->__ss.__rflags &= ~(EFL_CF | EFL_PF | EFL_SF | EFL_OF);
+        if (value1 == 0)
+        {
+            ucontext->uc_mcontext->__ss.__rflags |= EFL_ZF;
+        }
+
         writeRegister(reg, rexR, 32, value1, ucontext);
     }
     else if (next == 0x83) // MOV r/m, reg -> r/m, %fs:offset
     {
         FETCH_MODRM();
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: Arithmetic: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
 #endif
         int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
@@ -100,20 +110,21 @@ bool ElfProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
 
                 int8_t cmpValue = fetch8();
                 int64_t fsValue = readFS64(addr);
-#if 0
+#ifdef DEBUG
                 printf("ElfProcess::execFSInstruction: CMP $0x%x, fs:0x%llx: %d - %lld\n", cmpValue, addr, cmpValue, fsValue);
 #endif
+
+                ucontext->uc_mcontext->__ss.__rflags &= ~(EFL_CF | EFL_PF | EFL_SF);
 
                 int diff = cmpValue - fsValue;
                 if (diff == 0)
                 {
-                    ucontext->uc_mcontext->__ss.__rflags &= ~(EFL_CF | EFL_PF | EFL_SF);
                     ucontext->uc_mcontext->__ss.__rflags |= EFL_ZF;
                 }
                 else
                 {
                     printf("ElfProcess::execFSInstruction: CMP: Unhandled comparison! diff=%d\n", diff);
-exit(0);
+//exit(0);
                 }
 
             } break;
@@ -125,18 +136,18 @@ exit(0);
     }
     else if (next == 0x89) // MOV r/m, reg -> r/m, %fs:offset
     {
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: MOV\n");
 #endif
 
         FETCH_MODRM();
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
 #endif
         int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
 
         uint64_t value = readRegister(reg, rexR, 32, ucontext);
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: mov %%reg(%d = 0x%llx), %%fs:0x%llx (%lld)\n", reg, value, addr, addr);
 #endif
         writeFS64((int)addr, value);
@@ -145,7 +156,7 @@ exit(0);
     {
 
         FETCH_MODRM();
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: MOV(8b): modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
 #endif
         int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
@@ -157,7 +168,7 @@ exit(0);
             value = 0x6b5b20;
         }
 
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: MOV(8b): MOV %%fs:%lld (0x%llx), r%d\n", addr, value, reg);
 #endif
         writeRegister(reg, rexR, 64, value, ucontext);
@@ -165,13 +176,13 @@ exit(0);
     else if (next == 0xc7) // MOV imm, %fs:mod/rm
     {
         FETCH_MODRM();
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
 #endif
         int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
 
         int32_t value = fetch32();
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::execFSInstruction: value=0x%x\n", value);
 
         printf("ElfProcess::execFSInstruction: MOV $0x%x, fs:(addr=0x%lld)\n", value, addr);
@@ -185,7 +196,7 @@ exit(0);
         exit(1);
     }
 
-#if 0
+#ifdef DEBUG
     printf("ElfProcess::execFSInstruction: Done! Advancing to %p\n", m_rip);
 #endif
     ucontext->uc_mcontext->__ss.__rip = (uint64_t)m_rip;
@@ -203,7 +214,7 @@ uint64_t ElfProcess::fetchModRMAddress(int mod, int rm, int rexB, ucontext_t* uc
     else
     {
         value = readRegister(rm, rexB, 64, ucontext);
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::fetchModRMAddress: value=0x%llx\n", value);
 #endif
     }
@@ -231,7 +242,7 @@ uint64_t ElfProcess::fetchSIB(int rexB, ucontext_t* ucontext)
     int base = sib & 7;
     int index = (sib >> 3) & 7;
     int scale = (sib >> 5) & 3;
-#if 0
+#ifdef DEBUG
     printf("ElfProcess::fetchSIB: sib=0x%x, base=%d, index=%d, scale=%d\n", sib, base, index, scale);
 #endif
     uint64_t value = 0;
@@ -243,7 +254,7 @@ uint64_t ElfProcess::fetchSIB(int rexB, ucontext_t* ucontext)
     {
         value = fetch32();
     }
-#if 0
+#ifdef DEBUG
     printf("ElfProcess::fetchSIB: Base value: 0x%llx\n", value);
 #endif
 
@@ -257,7 +268,7 @@ uint64_t ElfProcess::fetchSIB(int rexB, ucontext_t* ucontext)
         indexValue = 0;
     }
     indexValue *= scale;
-#if 0
+#ifdef DEBUG
     printf("ElfProcess::fetchSIB: Index value: 0x%llx\n", indexValue);
 #endif
     if (indexValue != 0)
@@ -316,7 +327,7 @@ uint64_t ElfProcess::readRegister(int reg, int rexB, int size, ucontext_t* ucont
                 value = ucontext->uc_mcontext->__ss.__rdi;
                 break;
         }
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::readRegister: reg=%s\n", regname);
 #endif
     }
@@ -441,7 +452,7 @@ void ElfProcess::writeRegister(int reg, int rexB, int size, uint64_t value, ucon
                 break;
         }
     }
-#if 0
+#ifdef DEBUG
         printf("ElfProcess::writeRegister: %s\n", regname);
 #endif
 }
