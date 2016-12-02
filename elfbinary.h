@@ -30,10 +30,12 @@
 class ElfExec;
 class ElfLibrary;
 class LibraryEntry;
+class ElfProcess;
 
 class ElfBinary
 {
  protected:
+    ElfProcess* m_elfProcess;
     ElfExec* m_exec;
 
     char* m_path;
@@ -41,6 +43,7 @@ class ElfBinary
     Elf64_Ehdr* m_header;
     char* m_shStringTable;
     char* m_stringTable;
+    uint64_t m_end;
 
     std::vector<LibraryEntry*> m_libraries;
     uint64_t m_tlsBase;
@@ -63,14 +66,17 @@ class ElfBinary
     Elf64_Sym* findSymbol(const char* sym);
 
     virtual bool map() = 0;
+    uint64_t getEnd() { return m_end; }
 
     bool loadLibraries();
     virtual bool relocate();
 
+    void setElfProcess(ElfProcess* elfProcess) { m_elfProcess = elfProcess; }
     char* getPath() { return m_path; }
 
     int getTLSSize() { return m_tlsSize; }
-    void initTLS(void* tls, uint64_t tlsbase);
+    void setTLSBase(uint64_t tlsbase) { m_tlsBase = tlsbase; }
+    void initTLS(void* tls);
     uint64_t getTLSBase();
 };
 

@@ -33,48 +33,38 @@
 #include "elfbinary.h"
 #include "elflibrary.h"
 #include "elfexec.h"
+#include "rtld.h"
 #include "utils.h"
 
 using namespace std;
 
-#undef DEBUG
+#define DEBUG
 
-typedef int(*entryFunc_t)();
+#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 
 typedef uint64_t(*ifunc_t)();
 
-struct r_scope_elem
+
+void rtld_lock_recursive(void*)
 {
-  /* Array of maps for the scope.  */
-  void* r_list;
-  /* Number of entries in the scope.  */
-  unsigned int r_nlist;
-};
+}
 
-
-
-struct rtld_global_ro
+void rtld_unlock_recursive(void*)
 {
-  int _dl_debug_mask;
-  unsigned int _dl_osversion;
-  const char *_dl_platform;
-  size_t _dl_platformlen;
-  size_t _dl_pagesize;
-  int _dl_inhibit_cache;
-  struct r_scope_elem _dl_initial_searchlist;
-  int _dl_clktck;
-  int _dl_verbose;
-  int _dl_debug_fd;
-  int _dl_lazy;
-  int _dl_bind_not;
-  int _dl_dynamic_weak;
-  unsigned int _dl_fpu_control;
-  int _dl_correct_cache_id;
-  uint64_t _dl_hwcap;
-  uint64_t _dl_hwcap_mask;
-};
+}
 
-rtld_global_ro g_rtldGlobal;
+void* dl_find_dso_for_object(void* addr)
+{
+    return NULL;
+}
+
+rtld_global_ro g_rtldGlobalRO;
+rtld_global g_rtldGlobal =
+{
+    ._dl_error_catch_tsd = (void**(*)())0xbeefface,
+    ._dl_rtld_lock_recursive = rtld_lock_recursive,
+    ._dl_rtld_unlock_recursive = rtld_unlock_recursive
+};
 
 uint64_t tls_get_addr();
 
@@ -349,6 +339,13 @@ bool ElfBinary::relocate()
         LibraryEntry* lib = *it;
         int i;
 
+        if (lib->getLibrary() != this)
+        {
+            // Handle library relocations first as they might set things
+            // that are used by this binary's relocations
+            lib->getLibrary()->relocate();
+        }
+
         uint64_t base = 0;
         if (m_header->e_type == ET_DYN)
         {
@@ -375,11 +372,6 @@ bool ElfBinary::relocate()
             relocateRela(lib->getLibrary(), &(rela[i]), base, symtab, strtab);
         }
 
-        if (lib->getLibrary() != this)
-        {
-            lib->getLibrary()->relocate();
-        }
-
     }
     return true;
 }
@@ -397,10 +389,24 @@ void ElfBinary::relocateRela(ElfLibrary* lib, Elf64_Rela* rela, uint64_t base, E
         rela->r_addend);
 #endif
 
-    uint64_t* dest64 = (uint64_t*)(rela->r_offset + base);
-    uint32_t* dest32 = (uint32_t*)(rela->r_offset + base);
+    uint64_t destaddr = rela->r_offset + base;
+    uint64_t* dest64 = (uint64_t*)destaddr;
+    uint32_t* dest32 = (uint32_t*)destaddr;
     switch (type)
     {
+        case R_X86_64_COPY:
+        {
+            const char* symName = strtab + symtab[sym].st_name;
+            Elf64_Sym* symbol = lib->findSymbol(symName);
+
+            printf(
+                "ElfBinary::relocate: R_X86_64_COPY: sym name=%s, src=0x%llx, size=%d\n", 
+                symName,
+                symbol->st_value + lib->getBase(), symbol->st_size);
+            memcpy((void*)destaddr, (void*)(symbol->st_value + lib->getBase()), symbol->st_size);
+            hexdump((char*)destaddr, symbol->st_size);
+        } break;
+
         case R_X86_64_64:
         case R_X86_64_GLOB_DAT:
         case R_X86_64_JUMP_SLOT:
@@ -424,18 +430,21 @@ void ElfBinary::relocateRela(ElfLibrary* lib, Elf64_Rela* rela, uint64_t base, E
             uint64_t value = 0;
             if (symbol != NULL)
             {
-#ifdef DEBUG
-                printf(
-                    "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> symbol value=0x%llx\n",
-                    symbol->st_value);
-#endif
                 if (symbol->st_value != 0)
                 {
                     value = lib->getBase() + symbol->st_value;
                 }
-                else if (!strcmp(symName, "_rtld_global_ro"))
+                else if (!strcmp(symName, "_rtld_global"))
                 {
                     value = (uint64_t)(&g_rtldGlobal);
+#ifdef DEBUG
+                    printf(
+                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> _rtld_global\n");
+#endif
+                }
+                else if (!strcmp(symName, "_rtld_global_ro"))
+                {
+                    value = (uint64_t)(&g_rtldGlobalRO);
 #ifdef DEBUG
                     printf(
                         "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> _rtld_global_ro\n");
@@ -446,21 +455,43 @@ void ElfBinary::relocateRela(ElfLibrary* lib, Elf64_Rela* rela, uint64_t base, E
                     value = (uint64_t)(tls_get_addr);
 #ifdef DEBUG
                     printf(
-                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> _rtld_global_ro\n");
+                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> __tls_get_addr\n");
 #endif
                 }
+                else if (!strcmp(symName, "_dl_find_dso_for_object"))
+                {
+                    value = (uint64_t)(dl_find_dso_for_object);
+#ifdef DEBUG
+                    printf(
+                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> _dl_find_dso_for_object\n");
+#endif
+                }
+
 
             }
             if (type == R_X86_64_64)
             {
                 value += rela->r_addend;
             }
+#ifdef DEBUG
+                printf(
+                    "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> value=0x%llx\n",
+                    value);
+#endif
+
             *dest64 = value;
         } break;
 
         case R_X86_64_RELATIVE:
         {
             *dest64 = (lib->getBase() + rela->r_addend);
+            printf(
+                "ElfBinary::relocate: R_X86_64_IRELATIVE: 0x%llx + 0x%llx = 0x%llx\n", lib->getBase(), rela->r_addend, *dest64);
+        } break;
+
+        case R_X86_64_DTPMOD64:
+            {
+            *dest64 = m_tlsBase;
         } break;
 
         case R_X86_64_TPOFF64:
@@ -493,12 +524,16 @@ value);
 
 }
 
-void ElfBinary::initTLS(void* tls, uint64_t tlsbase)
+void ElfBinary::initTLS(void* tls)
 {
-    m_tlsBase = tlsbase;
-
     int i;
     Elf64_Phdr* phdr = (Elf64_Phdr*)(m_image + m_header->e_phoff);
+
+    uint64_t base = 0;
+    if (m_header->e_type == ET_DYN)
+    {
+        base = ((ElfLibrary*)this)->getBase();
+    }
 
     for (i = 0; i < m_header->e_phnum; i++)
     {
@@ -506,7 +541,7 @@ void ElfBinary::initTLS(void* tls, uint64_t tlsbase)
         {
             memcpy(
                 tls,
-                m_image + phdr[i].p_offset,
+                (void*)(phdr[i].p_vaddr + base),
                 phdr[i].p_filesz);
         }
     }

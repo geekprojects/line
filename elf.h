@@ -139,6 +139,7 @@
 #define R_X86_64_RELATIVE       8       /* Adjust by program base */
 #define R_X86_64_GOTPCREL       9       /* 32 bit signed PC relative
                                            offset to GOT */
+#define R_X86_64_DTPMOD64       16      /* ID of module containing symbol */
 #define R_X86_64_TPOFF64        18      /* Offset in initial TLS block */
 #define R_X86_64_IRELATIVE      37      /* Adjust indirectly by program base */
 
@@ -173,7 +174,9 @@ typedef int32_t   Elf64_Sword;
 typedef uint32_t   Elf64_Word;
 typedef uint64_t   Elf64_Xword;
 typedef int64_t   Elf64_Sxword;
+typedef Elf64_Half Elf64_Versym;
 
+typedef uint32_t Elf_Symndx;
 
 typedef struct {
     u_char e_ident[EI_NIDENT];
@@ -352,5 +355,8 @@ typedef struct
 #define ELF_PAGESTART64(_v) ((_v) & ~(uint64_t)(ELF_MIN_ALIGN-1))
 #define ELF_PAGEOFFSET(_v) ((_v) & (ELF_MIN_ALIGN-1))
 #define ELF_PAGEALIGN(_v) (((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))
+
+#define ELF_ALIGNDOWN(_v) ((_v) & ~(uint64_t)(ELF_MIN_ALIGN-1))
+#define ELF_ALIGNUP(_v) (((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))
 
 #endif
