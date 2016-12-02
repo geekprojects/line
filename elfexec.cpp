@@ -35,6 +35,8 @@
 
 using namespace std;
 
+#define DEBUG
+
 typedef int(*entryFunc_t)();
 
 ElfExec::ElfExec()
@@ -67,6 +69,8 @@ bool ElfExec::map()
     int i;
     Elf64_Phdr* phdr = (Elf64_Phdr*)(m_image + m_header->e_phoff);
 
+    m_end = 0;
+
     for (i = 0; i < m_header->e_phnum; i++)
     {
 #ifdef DEBUG
@@ -74,12 +78,13 @@ bool ElfExec::map()
 #endif
         if (phdr[i].p_type == PT_LOAD)
         {
-            uint64_t start = (phdr[i].p_vaddr & ~0xfff);
-            size_t len = ALIGN(phdr[i].p_memsz + ELF_PAGEOFFSET(phdr->p_vaddr), 4096);
+
+            uint64_t start = ELF_ALIGNDOWN(phdr[i].p_vaddr);
+            size_t len = ELF_ALIGNUP(phdr[i].p_memsz + ELF_ALIGNUP(phdr->p_vaddr)) - ELF_ALIGNDOWN(phdr->p_vaddr);
 
 #ifdef DEBUG
             printf(
-                "ElfExec::map: Specified: 0x%llx-0x%llx, Aligned: 0x%llx, 0x%llx\n",
+                "ElfExec::map: Specified: 0x%llx-0x%llx, Aligned: 0x%llx-0x%llx\n",
                 phdr[i].p_vaddr,
                 phdr[i].p_vaddr + phdr[i].p_memsz,
                 start,
@@ -113,10 +118,22 @@ bool ElfExec::map()
                 return 1;
             }
 
+            printf("ElfExec::map: Program Header: %d: memcpy(0x%llx-0x%llx, 0x%llx-0x%llx, %d)\n",
+                i,
+                (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
+                (uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr) + phdr[i].p_filesz,
+                m_image + phdr[i].p_offset,
+                m_image + phdr[i].p_offset + phdr[i].p_filesz,
+                phdr[i].p_filesz);
             memcpy(
                 (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
                 m_image + phdr[i].p_offset,
                 phdr[i].p_filesz);
+
+            if (phdr[i].p_vaddr + phdr[i].p_memsz > m_end)
+            {
+                m_end = ELF_ALIGNUP(phdr[i].p_vaddr);
+            }
         }
         else if (phdr[i].p_type == PT_TLS)
         {
@@ -172,10 +189,6 @@ static void exitfunction()
 
 void ElfExec::entry(int argc, char** argv, char** envp)
 {
-//const char* argv0 = "hello";
-    //register entryFunc_t entry __asm__("rdi"); // Prevent clashes with rdx
-    //entry = (entryFunc_t)(m_header->e_entry);
-
     entryFunc_t entry = (entryFunc_t)(m_header->e_entry);
     char randbytes[16];
     int i;
@@ -185,7 +198,7 @@ void ElfExec::entry(int argc, char** argv, char** envp)
     }
 
     // Write the standard stack entry details
-    uint64_t* stack = (uint64_t*)alloca(4096);
+    uint64_t* stack = (uint64_t*)alloca(4096); // Allocate from our stack
     uint64_t* stackpos = stack;
     *(stackpos++) = argc;
     for (i = 0; i < argc; i++)
