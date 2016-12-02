@@ -39,7 +39,7 @@
 
 using namespace std;
 
-#undef DEBUG
+#define DEBUG
 
 static ElfProcess* g_elfProcess = NULL;
 
@@ -53,6 +53,7 @@ ElfProcess::ElfProcess(ElfExec* exec)
     g_elfProcess = this;
 
     m_elf = exec;
+    m_elf->setElfProcess(this);
 }
 
 bool ElfProcess::start()
@@ -76,34 +77,32 @@ bool ElfProcess::start()
     environ[2] = NULL;
 
     // Set up brk pointer
-    uint64_t end = m_elf->findSymbol("_end")->st_value;
-#ifdef DEBUG
-    printf("ElfProcess::start: sys_brk: end=0x%llx\n", end);
-#endif
-    m_brk = ALIGN(end, 4096);
+    m_brk = m_elf->getEnd();
+    printf("ElfProcess::start: sys_brk: end=0x%llx\n", m_brk);
 
     // Set up TLS
-
     int tlssize = m_elf->getTLSSize();
+    int tlspos = tlssize;
     map<string, ElfLibrary*> libs = m_elf->getLibraries();
     map<string, ElfLibrary*>::iterator it;
     for (it = libs.begin(); it != libs.end(); it++)
     {
+        it->second->setTLSBase(tlspos);
         tlssize += it->second->getTLSSize();
     }
 #ifdef DEBUG
     printf("ElfProcess::start: tlssize=%d\n", tlssize);
 #endif
 
+    m_elf->relocate();
+
     m_fs = (uint64_t)malloc(tlssize);
-    int tlspos = m_elf->getTLSSize();
+    tlspos = m_elf->getTLSSize();
     for (it = libs.begin(); it != libs.end(); it++)
     {
-        it->second->initTLS((void*)(m_fs + tlspos), tlspos);
+        it->second->initTLS((void*)(m_fs + tlspos));
         tlspos += it->second->getTLSSize();
     }
-
-    m_elf->relocate();
 
     // Set up args
     // 0 "hello"
@@ -173,7 +172,7 @@ void ElfProcess::printregs(ucontext_t* ucontext)
 void ElfProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 {
     printf(
-        "ElfProcess::error: sig=%d, errno=%d, address=%p\n",
+        "ElfProcess::error: sig=%d, errno=%d, address=0x%llx\n",
         sig,
         info->si_errno,
         info->si_addr);
@@ -210,7 +209,7 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
     // Save ourselves a segfault
     if (addr == 0)
     {
-        printf("ElfProcess::trap: addr=%p\n", addr);
+        printf("ElfProcess::trap: addr=0x%llx\n", addr);
         printregs(ucontext);
         exit(1);
     }
