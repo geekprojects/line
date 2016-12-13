@@ -24,6 +24,7 @@
 #include "elf.h"
 
 #include <vector>
+#include <map>
 
 #define ALIGN(_v, _a) (((_v) + _a - 1) & ~(_a - 1))
 
@@ -44,16 +45,19 @@ class ElfBinary
     char* m_shStringTable;
     char* m_stringTable;
     uint64_t m_end;
+    uint64_t m_base;
 
-    std::vector<LibraryEntry*> m_libraries;
     uint64_t m_tlsBase;
     int m_tlsSize;
 
+    std::vector<uint64_t> m_needed;
+    std::map<uint64_t, uint64_t> m_dyn;
+    
     Elf64_Shdr* findSection(const char* name);
 
     bool readDynamicHeader(Elf64_Phdr* header);
 
-    void relocateRela(ElfLibrary* lib, Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab, const char* strtab);
+    void relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab, const char* strtab);
 
  public:
 
@@ -68,6 +72,9 @@ class ElfBinary
     virtual bool map() = 0;
     uint64_t getEnd() { return m_end; }
 
+    void setBase(uint64_t base) { m_base = base; }
+    uint64_t getBase() { return m_base; }
+
     bool loadLibraries();
     virtual bool relocate();
 
@@ -78,24 +85,18 @@ class ElfBinary
     void setTLSBase(uint64_t tlsbase) { m_tlsBase = tlsbase; }
     void initTLS(void* tls);
     uint64_t getTLSBase();
-};
 
-class Library : public ElfBinary
-{
- protected:
-    // Fields from the DYNAMIC header
-    int m_dynNameIdx;
-    const char* m_dynStrTab;
-
-    uint64_t m_base;
-
- public:
-    Library();
-    virtual ~Library();
-
-    void setDynNameIndex(int idx) { m_dynNameIdx = idx; }
-    void setDynStrTab(const char* strtab) { m_dynStrTab = strtab; }
-    const char* getDynName() { return m_dynStrTab + m_dynNameIdx; }
+    void setDynValue(uint64_t tag, uint64_t value) { m_dyn.insert(std::make_pair(tag, value)); }
+    uint64_t getDynValue(uint64_t tag)
+    {
+        std::map<uint64_t, uint64_t>::iterator it;
+        it = m_dyn.find(tag);
+        if (it != m_dyn.end())
+        {
+            return it->second;
+        }
+        return 0;
+    }
 };
 
 #endif

@@ -35,7 +35,7 @@ class LibraryEntry;
 class ElfExec : public ElfBinary
 {
  protected:
-    std::map<std::string, ElfLibrary*> m_libraries;
+    std::map<std::string, ElfLibrary*> m_libraryMap;
 
  public:
 
@@ -46,7 +46,8 @@ class ElfExec : public ElfBinary
 
     void addLibrary(std::string name, ElfLibrary* library);
     ElfLibrary* getLibrary(std::string name);
-    std::map<std::string, ElfLibrary*>& getLibraries() { return m_libraries; };
+    std::map<std::string, ElfLibrary*>& getLibraries() { return m_libraryMap; };
+    void relocateLibraries();
 
     void entry(int argc, char** argv, char** envp);
 };

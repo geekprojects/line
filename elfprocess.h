@@ -32,6 +32,7 @@ class ElfProcess
 
     uint64_t m_fs;
     uint64_t m_brk;
+    uint64_t m_libraryLoadAddr;
 
     uint8_t* m_rip;
 
@@ -72,9 +73,15 @@ class ElfProcess
     ElfProcess(ElfExec* exec);
     ~ElfProcess();
 
-    bool start();
+    bool start(int argc, char** argv);
 
     uint64_t getFS() { return m_fs; };
+    uint64_t getNextLibraryLoadAddr()
+    {
+        uint64_t addr = m_libraryLoadAddr;
+        m_libraryLoadAddr += 0x10000000;
+        return addr;
+    }
 };
 
 

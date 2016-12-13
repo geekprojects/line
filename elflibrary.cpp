@@ -31,6 +31,7 @@
 #include <string>
 
 #include "elflibrary.h"
+#include "elfprocess.h"
 
 using namespace std;
 
@@ -55,12 +56,15 @@ bool ElfLibrary::map()
 
     uint64_t loadMin = 0;
     uint64_t loadMax = 0;
-    for (i = 0; i < m_header->e_phnum; i++)
+
+    Elf64_Shdr* shdr = (Elf64_Shdr*)(m_image + m_header->e_shoff);
+    for (i = 0; i < m_header->e_shnum; i++)
     {
-        if (phdr[i].p_type == PT_LOAD)
+        if (shdr[i].sh_flags & SHF_ALLOC)
         {
-            uint64_t min = (phdr[i].p_vaddr & ~0xfff);
-            uint64_t max = min + ALIGN(phdr[i].p_memsz + ELF_PAGEOFFSET(phdr->p_vaddr), 4096);
+
+            uint64_t min = (shdr[i].sh_addr & ~0xfff);
+            uint64_t max = min + ALIGN(shdr[i].sh_size + ELF_PAGEOFFSET(shdr->sh_addr), 4096);
             if (i == 0)
             {
                 loadMin = min;
@@ -81,17 +85,25 @@ bool ElfLibrary::map()
     }
 
 #ifdef DEBUG
-    printf("ElfLibrary::map: loadMin=0x%llx, loadMax=0x%llx\n", loadMin, loadMax);
+    printf("ElfLibrary::map: %s: loadMin=0x%llx, loadMax=0x%llx\n", m_path, loadMin, loadMax);
+#endif
+
+    uint64_t loadAddr = m_elfProcess->getNextLibraryLoadAddr();
+#ifdef DEBUG
+    printf("ElfLibrary::map: %s: loadAddr=0x%llx\n", m_path, loadAddr);
 #endif
 
     // Allocate a base location for this library now we know how big it is
     m_base = (uint64_t)mmap(
-        (void*)0x40000000,
+        (void*)loadAddr,
         loadMax,
         PROT_READ | PROT_WRITE | PROT_EXEC,
         MAP_ANON | MAP_PRIVATE,
         -1,
         0);
+#ifdef DEBUG
+    printf("ElfLibrary::map: m_base=0x%llx\n", m_base);
+#endif
  
     // Now we have a base, we can copy the library to where its new home
     for (i = 0; i < m_header->e_phnum; i++)
@@ -105,7 +117,8 @@ bool ElfLibrary::map()
 
 #ifdef DEBUG
             printf(
-                "ElfLibrary::map: Specified: 0x%llx-0x%llx, Remapped: 0x%llx, 0x%llx, Copying to: 0x%llx, 0x%llx\n",
+                "ElfLibrary::map: %s: Specified: 0x%llx-0x%llx, Remapped: 0x%llx, 0x%llx, Copying to: 0x%llx, 0x%llx\n",
+                m_path,
                 phdr[i].p_vaddr,
                 phdr[i].p_vaddr + phdr[i].p_memsz,
                 start,
@@ -134,17 +147,32 @@ bool ElfLibrary::map()
     {
 #ifdef DEBUG
         printf(
-            "ElfLibrary::map: Clearing BSS: addr=0x%llx-0x%llx, size=%llu\n",
-            bssSection->sh_addr,
-            bssSection->sh_addr + bssSection->sh_size - 1,
+            "ElfLibrary::map: %s: Clearing BSS: addr=0x%llx-0x%llx, size=%llu\n",
+            m_path,
+            m_base + bssSection->sh_addr,
+            m_base + bssSection->sh_addr + bssSection->sh_size - 1,
             bssSection->sh_size);
 #endif
         memset((void*)(m_base + bssSection->sh_addr), 0x0, bssSection->sh_size);
     }
     else
     {
-        printf("ElfLibrary::map: Failed to find BSS section\n");
+        printf("ElfLibrary::map: %s: Failed to find BSS section\n", m_path);
     }
+
     return true;
+}
+
+typedef void(*initFunc_t)(int argc, char **argv, char **envp);
+
+void ElfLibrary::entry(int argc, char** argv, char** envp)
+{
+    uint64_t entry = getDynValue(DT_INIT);
+    if (entry != 0)
+    {
+        entry += getBase();
+        initFunc_t initFunc = (initFunc_t)entry;
+        initFunc(argc, argv, envp);
+    }
 }
 

@@ -31,11 +31,10 @@
 #include <string>
 
 #include "elfexec.h"
+#include "elflibrary.h"
 #include "utils.h"
 
 using namespace std;
-
-#define DEBUG
 
 typedef int(*entryFunc_t)();
 
@@ -50,18 +49,28 @@ ElfExec::~ElfExec()
 
 void ElfExec::addLibrary(string name, ElfLibrary* lib)
 {
-    m_libraries.insert(make_pair(name, lib));
+    m_libraryMap.insert(make_pair(name, lib));
 }
 
 ElfLibrary* ElfExec::getLibrary(string name)
 {
     std::map<string, ElfLibrary*>::iterator it;
-    it = m_libraries.find(name);
-    if (it != m_libraries.end())
+    it = m_libraryMap.find(name);
+    if (it != m_libraryMap.end())
     {
         return it->second;
     }
     return NULL;
+}
+
+void ElfExec::relocateLibraries()
+{
+    std::map<string, ElfLibrary*>::iterator it;
+    for (it = m_libraryMap.begin(); it != m_libraryMap.end(); it++)
+    {
+        ElfLibrary* lib = it->second;
+        lib->relocate();
+    }
 }
 
 bool ElfExec::map()
@@ -118,6 +127,7 @@ bool ElfExec::map()
                 return 1;
             }
 
+#ifdef DEBUG
             printf("ElfExec::map: Program Header: %d: memcpy(0x%llx-0x%llx, 0x%llx-0x%llx, %d)\n",
                 i,
                 (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
@@ -125,6 +135,7 @@ bool ElfExec::map()
                 m_image + phdr[i].p_offset,
                 m_image + phdr[i].p_offset + phdr[i].p_filesz,
                 phdr[i].p_filesz);
+#endif
             memcpy(
                 (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
                 m_image + phdr[i].p_offset,
@@ -132,7 +143,7 @@ bool ElfExec::map()
 
             if (phdr[i].p_vaddr + phdr[i].p_memsz > m_end)
             {
-                m_end = ELF_ALIGNUP(phdr[i].p_vaddr);
+                m_end = ELF_ALIGNUP(phdr[i].p_vaddr + phdr[i].p_memsz);
             }
         }
         else if (phdr[i].p_type == PT_TLS)
@@ -161,6 +172,7 @@ bool ElfExec::map()
     {
         printf("ElfExec::map: Failed to find BSS section\n");
     }
+
     return true;
 }
 
@@ -189,7 +201,8 @@ static void exitfunction()
 
 void ElfExec::entry(int argc, char** argv, char** envp)
 {
-    entryFunc_t entry = (entryFunc_t)(m_header->e_entry);
+    uint64_t entry = m_header->e_entry;
+
     char randbytes[16];
     int i;
     for (i = 0; i < 16; i++)
@@ -231,7 +244,7 @@ void ElfExec::entry(int argc, char** argv, char** envp)
     asm volatile (
         "movq %0, %%rsp\n"
         "movq %2, %%rdx\n"
-        "jmp *%1\n"
+        "jmpq *%1\n"
         : : "r" (stack), "r" (entry), "r" (exitfunction) : "rdx", "rsp"
     );
 }

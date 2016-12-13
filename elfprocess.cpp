@@ -39,8 +39,6 @@
 
 using namespace std;
 
-#define DEBUG
-
 static ElfProcess* g_elfProcess = NULL;
 
 uint64_t tls_get_addr()
@@ -54,10 +52,13 @@ ElfProcess::ElfProcess(ElfExec* exec)
 
     m_elf = exec;
     m_elf->setElfProcess(this);
+
+    m_libraryLoadAddr = 0x40000000;
 }
 
-bool ElfProcess::start()
+bool ElfProcess::start(int argc, char** argv)
 {
+
     // Set up sigtrap handler
     struct sigaction act;
     memset (&act, 0, sizeof(act));
@@ -78,7 +79,6 @@ bool ElfProcess::start()
 
     // Set up brk pointer
     m_brk = m_elf->getEnd();
-    printf("ElfProcess::start: sys_brk: end=0x%llx\n", m_brk);
 
     // Set up TLS
     int tlssize = m_elf->getTLSSize();
@@ -87,16 +87,22 @@ bool ElfProcess::start()
     map<string, ElfLibrary*>::iterator it;
     for (it = libs.begin(); it != libs.end(); it++)
     {
-        it->second->setTLSBase(tlspos);
-        tlssize += it->second->getTLSSize();
+        int size = it->second->getTLSSize();
+#ifdef DEBUG
+        printf("ElfProcess::start: TLS: %s: size=0x%x, pos=0x%x\n", it->first.c_str(), size, tlssize);
+#endif
+        it->second->setTLSBase(tlssize);
+        tlssize += size;
     }
 #ifdef DEBUG
     printf("ElfProcess::start: tlssize=%d\n", tlssize);
 #endif
 
+    m_fs = (uint64_t)malloc(tlssize);
+
+    m_elf->relocateLibraries();
     m_elf->relocate();
 
-    m_fs = (uint64_t)malloc(tlssize);
     tlspos = m_elf->getTLSSize();
     for (it = libs.begin(); it != libs.end(); it++)
     {
@@ -104,21 +110,23 @@ bool ElfProcess::start()
         tlspos += it->second->getTLSSize();
     }
 
-    // Set up args
-    // 0 "hello"
-    // 1 environment
-    char** elfArgv = new char*[1];
-    elfArgv[0] = (char*)"/bin/hello";
-    //elfArgv[1] = (char*)environ;
-
 #ifdef DEBUG
     printf("ElfProcess::start: suspending...\n");
 #endif
+
     // Wait for our parent to enable single step tracing etc
     task_suspend(mach_task_self());
 
+    for (it = libs.begin(); it != libs.end(); it++)
+    {
+        if (it->first != "libpthread.so.0")
+        {
+            it->second->entry(argc, argv, environ);
+        }
+    }
+
     // Execute the ELF (Note, no Elves were harmed...)
-    m_elf->entry(1, elfArgv, environ);
+    m_elf->entry(argc, argv, environ);
 
     return true;
 }
@@ -178,10 +186,8 @@ void ElfProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
         info->si_addr);
     printregs(ucontext);
 
-    //uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip);
-    //printf("ElfProcess::error: %p: 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
-fflush(stdout);
-exit(1);
+    fflush(stdout);
+    exit(1);
 }
 
 void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
@@ -204,40 +210,59 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
     }
 #endif
 
-    uint8_t* addr = (uint8_t*)info->si_addr;
-
-    // Save ourselves a segfault
-    if (addr == 0)
+    while (true)
     {
-        printf("ElfProcess::trap: addr=0x%llx\n", addr);
-        printregs(ucontext);
-        exit(1);
-    }
+        uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip);
+
+        // Save ourselves a segfault
+        if (addr == 0)
+        {
+            printf("ElfProcess::trap: addr=0x%llx\n", addr);
+            printregs(ucontext);
+            exit(1);
+        }
+        else if (
+            ((uint64_t)addr >= 0x7bf00000 && (uint64_t)addr <= 0x7bffffff) ||
+            ((uint64_t)addr >= 0x7fffc0000000))
+        {
+            // Line binary or kernel
+#ifdef DEBUG
+            printf("ElfProcess::trap: %p: line\n", addr);
+#endif
+            return;
+        }
 
 #ifdef DEBUG
-    printf("ElfProcess::trap: %x: 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
+        printf("ElfProcess::trap: %p: 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
 #endif
-    if (*addr == 0x0f && *(addr + 1) == 0x05)
-    {
+        if (*addr == 0x0f && *(addr + 1) == 0x05)
+        {
 #ifdef DEBUG
-        printf("trap: errno=%d, address=%p: SYSCALL\n", info->si_errno, info->si_addr);
+            printf("trap: errno=%d, address=%p: SYSCALL\n", info->si_errno, info->si_addr);
 #endif
 
-        //printf("child_signal_handler:  -> SYSCALL: RAX=%p\n", ucontext->uc_mcontext->__ss.__rax);
-        int syscall = ucontext->uc_mcontext->__ss.__rax;
-        execSyscall(syscall, ucontext);
+            //printf("child_signal_handler:  -> SYSCALL: RAX=%p\n", ucontext->uc_mcontext->__ss.__rax);
+            int syscall = ucontext->uc_mcontext->__ss.__rax;
+            execSyscall(syscall, ucontext);
 
-        // Skip it!
-        // This has the side effect of not stepping through the next instruction
-        // Hopefully we won't have two syscalls in a row!
-        ucontext->uc_mcontext->__ss.__rip += 2;
-    }
-    else if (*addr == 0x64)
-    {
+            // Skip it!
+            // This has the side effect of not stepping through the next instruction
+            // Hopefully we won't have two syscalls in a row!
+            ucontext->uc_mcontext->__ss.__rip += 2;
+        }
+        else if (*addr == 0x64)
+        {
 #ifdef DEBUG
-        printf("ElfProcess::trap: 0x%x:  FS! 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
+            printf("ElfProcess::trap: 0x%x:  FS! 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
 #endif
-        execFSInstruction(addr + 1, ucontext);
+            execFSInstruction(addr + 1, ucontext);
+        }
+        else
+        {
+            break;
+        }
+
+        // Better check that we don't need to handle the next instruction too
     }
 }
 
