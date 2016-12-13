@@ -25,8 +25,6 @@
 
 #include "elfprocess.h"
 
-#define DEBUG
-
 #define FETCH_NEXT() *(m_rip++)
 #define FETCH_NEXT32() *(m_rip++)
 #define FETCH_MODRM() {uint8_t modrm = FETCH_NEXT(); mod = (modrm >> 7) & 0x3; rm = modrm & 7; reg = (modrm >> 3) & 7; }
@@ -63,137 +61,166 @@ bool ElfProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
     int rm = 0;
     int reg = 0;
 
-    if (next == 0x33) // XOR
+    switch (next)
     {
-        FETCH_MODRM();
-#ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: XOR: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
-#endif
-        int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
-
-        uint64_t value1 = readFS64(addr);
-
-        uint64_t value2 = readRegister(reg, rexR, 32, ucontext);
-        if (addr == 0x30)
+        case 0x03: // ADD
         {
-            value1 = 0;
-        }
-
+            FETCH_MODRM();
+            int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
 #ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: XOR %%fs:0x%llx(0x%llx), reg%d(0x%llx)\n", addr, value1, reg, value2);
+            printf(
+                "ElfProcess::execFSInstruction: ADD: modrm: mod=%x, rm=%x, reg=%x -> addr=0x%llx\n",
+                mod,
+                rm,
+                reg,
+                addr);
 #endif
-        value1 ^= value2;
+            uint64_t value1 = readFS64(addr);
+            uint64_t value2 = readRegister(reg, rexR, 32, ucontext);
 #ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: XOR  -> 0x%llx\n", value1);
+            printf(
+                "ElfProcess::execFSInstruction: ADD: modrm:  value1=0x%llx, value2=0x%llx\n",
+                value1,
+                value2);
 #endif
+            writeRegister(reg, rexR, 32, value1 + value2, ucontext);
+        } break;
 
-        // TODO: Set more flags!
-        ucontext->uc_mcontext->__ss.__rflags &= ~(EFL_CF | EFL_PF | EFL_SF | EFL_OF);
-        if (value1 == 0)
+        case 0x33: // XOR
         {
-            ucontext->uc_mcontext->__ss.__rflags |= EFL_ZF;
-        }
-
-        writeRegister(reg, rexR, 32, value1, ucontext);
-    }
-    else if (next == 0x83) // MOV r/m, reg -> r/m, %fs:offset
-    {
-        FETCH_MODRM();
+            FETCH_MODRM();
 #ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: Arithmetic: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
+            printf("ElfProcess::execFSInstruction: XOR: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
 #endif
-        int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
-        switch (reg)
-        {
-            case 7:
+            int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
+
+            uint64_t value1 = readFS64(addr);
+
+            uint64_t value2 = readRegister(reg, rexR, 32, ucontext);
+            if (addr == 0x30)
             {
+                value1 = 0;
+            }
 
-                int8_t cmpValue = fetch8();
-                int64_t fsValue = readFS64(addr);
 #ifdef DEBUG
-                printf("ElfProcess::execFSInstruction: CMP $0x%x, fs:0x%llx: %d - %lld\n", cmpValue, addr, cmpValue, fsValue);
+            printf("ElfProcess::execFSInstruction: XOR %%fs:0x%llx(0x%llx), reg%d(0x%llx)\n", addr, value1, reg, value2);
+#endif
+            value1 ^= value2;
+#ifdef DEBUG
+            printf("ElfProcess::execFSInstruction: XOR  -> 0x%llx\n", value1);
 #endif
 
-                ucontext->uc_mcontext->__ss.__rflags &= ~(EFL_CF | EFL_PF | EFL_SF);
+            // TODO: Set more flags!
+            ucontext->uc_mcontext->__ss.__rflags &= ~(EFL_CF | EFL_PF | EFL_SF | EFL_OF);
+            if (value1 == 0)
+            {
+                ucontext->uc_mcontext->__ss.__rflags |= EFL_ZF;
+            }
 
-                int diff = cmpValue - fsValue;
-                if (diff == 0)
-                {
-                    ucontext->uc_mcontext->__ss.__rflags |= EFL_ZF;
-                }
-                else
-                {
-                    printf("ElfProcess::execFSInstruction: CMP: Unhandled comparison! diff=%d\n", diff);
-//exit(0);
-                }
+            writeRegister(reg, rexR, 32, value1, ucontext);
+        } break;
 
-            } break;
-
-            default:
-                printf("ElfProcess::execFSInstruction: Unhandled op: reg=0x%x\n", reg);
-                exit(1);
-        }
-    }
-    else if (next == 0x89) // MOV r/m, reg -> r/m, %fs:offset
-    {
-#ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: MOV\n");
-#endif
-
-        FETCH_MODRM();
-#ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
-#endif
-        int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
-
-        uint64_t value = readRegister(reg, rexR, 32, ucontext);
-#ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: mov %%reg(%d = 0x%llx), %%fs:0x%llx (%lld)\n", reg, value, addr, addr);
-#endif
-        writeFS64((int)addr, value);
-    }
-    else if (next == 0x8b) // MOV %fs:offset, %reg
-    {
-
-        FETCH_MODRM();
-#ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: MOV(8b): modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
-#endif
-        int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
-        uint64_t value = readFS64(addr);
-
-        // HACK HACK HACK
-        if (addr == -80 && value == 0)
+        case 0x83: // MOV r/m, reg -> r/m, %fs:offset
         {
-            value = 0x6b5b20;
-        }
-
+            FETCH_MODRM();
 #ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: MOV(8b): MOV %%fs:%lld (0x%llx), r%d\n", addr, value, reg);
+            printf("ElfProcess::execFSInstruction: Arithmetic: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
 #endif
-        writeRegister(reg, rexR, 64, value, ucontext);
-    }
-    else if (next == 0xc7) // MOV imm, %fs:mod/rm
-    {
-        FETCH_MODRM();
-#ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
-#endif
-        int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
+            int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
+            switch (reg)
+            {
+                case 7:
+                {
 
-        int32_t value = fetch32();
+                    int8_t cmpValue = fetch8();
+                    int64_t fsValue = readFS64(addr);
 #ifdef DEBUG
-        printf("ElfProcess::execFSInstruction: value=0x%x\n", value);
-
-        printf("ElfProcess::execFSInstruction: MOV $0x%x, fs:(addr=0x%lld)\n", value, addr);
+                    printf("ElfProcess::execFSInstruction: CMP $0x%x, fs:0x%llx: %d - %lld\n", cmpValue, addr, cmpValue, fsValue);
 #endif
 
-        writeFS64(addr, value);
-    }
-    else
-    {
-        printf("ElfProcess::execFSInstruction: Unhandled opcode: 0x%x\n", next);
-        exit(1);
+                    ucontext->uc_mcontext->__ss.__rflags &= ~(EFL_CF | EFL_PF | EFL_SF);
+
+                    int diff = cmpValue - fsValue;
+                    if (diff == 0)
+                    {
+                        ucontext->uc_mcontext->__ss.__rflags |= EFL_ZF;
+                    }
+                    else
+                    {
+                        printf("ElfProcess::execFSInstruction: CMP: Unhandled comparison! diff=%d\n", diff);
+//exit(0);
+                    }
+
+                } break;
+
+                default:
+                    printf("ElfProcess::execFSInstruction: Unhandled op: reg=0x%x\n", reg);
+                    exit(1);
+            }
+        } break;
+
+        case 0x89: // MOV r/m, reg -> r/m, %fs:offset
+        {
+#ifdef DEBUG
+            printf("ElfProcess::execFSInstruction: MOV\n");
+#endif
+
+            FETCH_MODRM();
+#ifdef DEBUG
+            printf("ElfProcess::execFSInstruction: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
+#endif
+            int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
+
+            uint64_t value = readRegister(reg, rexR, 32, ucontext);
+#ifdef DEBUG
+            printf("ElfProcess::execFSInstruction: mov %%reg(%d = 0x%llx), %%fs:0x%llx (%lld)\n", reg, value, addr, addr);
+#endif
+            writeFS64((int)addr, value);
+        } break;
+
+        case 0x8b: // MOV %fs:offset, %reg
+        {
+
+            FETCH_MODRM();
+#ifdef DEBUG
+            printf("ElfProcess::execFSInstruction: MOV(8b): modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
+#endif
+            int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
+            uint64_t value = readFS64(addr);
+
+            // HACK HACK HACK
+            if (addr == -80 && value == 0)
+            {
+                value = 0x6b5b20;
+            }
+
+#ifdef DEBUG
+            printf("ElfProcess::execFSInstruction: MOV(8b): MOV %%fs:%lld (0x%llx), r%d\n", addr, value, reg);
+#endif
+            writeRegister(reg, rexR, 64, value, ucontext);
+        } break;
+
+        case 0xc7: // MOV imm, %fs:mod/rm
+        {
+            FETCH_MODRM();
+#ifdef DEBUG
+            printf("ElfProcess::execFSInstruction: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
+#endif
+            int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
+
+            int32_t value = fetch32();
+#ifdef DEBUG
+            printf("ElfProcess::execFSInstruction: value=0x%x\n", value);
+
+            printf("ElfProcess::execFSInstruction: MOV $0x%x, fs:(addr=0x%lld)\n", value, addr);
+#endif
+
+            writeFS64(addr, value);
+        } break;
+
+        default:
+            printf("ElfProcess::execFSInstruction: Unhandled opcode: 0x%x\n", next);
+            exit(1);
     }
 
 #ifdef DEBUG
