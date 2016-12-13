@@ -24,14 +24,22 @@
 
 int main(int argc, char** argv)
 {
-if (argc != 2)
-{
-printf("%s <executable>\n", argv[0]);
-exit(1);
-}
+    if (argc < 2)
+    {
+        printf("%s <executable> <args ...>\n", argv[0]);
+        exit(1);
+    }
+
+    char* execargv[argc - 1];
+    int i;
+    for (i = 0; i < argc - 1; i++)
+    {
+        execargv[i] = argv[i + 1];
+    }
+
     Line line;
     line.open(argv[1]);
-    line.execute();
+    line.execute(argc - 1, execargv);
     return 0;
 }
 

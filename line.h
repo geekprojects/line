@@ -35,7 +35,7 @@ class Line
 
     bool open(const char* elfpath);
 
-    bool execute();
+    bool execute(int argc, char** argv);
 
     ElfExec* getElfBinary() { return &m_elfBinary; }
 };

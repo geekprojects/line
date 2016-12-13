@@ -50,12 +50,13 @@ bool Line::open(const char* elfpath)
     return true;
 }
 
-bool Line::execute()
+bool Line::execute(int argc, char** argv)
 {
-
     pid_t pid = fork();
     if (pid == 0)
     {
+        ElfProcess* elfProcess = new ElfProcess(&m_elfBinary);
+
         bool res;
         res = m_elfBinary.map();
         if (!res)
@@ -69,8 +70,7 @@ bool Line::execute()
             exit(1);
         }
 
-        ElfProcess* elfProcess = new ElfProcess(&m_elfBinary);
-        elfProcess->start();
+        elfProcess->start(argc, argv);
 
         // Should never get here!
         exit(255);
@@ -78,9 +78,7 @@ bool Line::execute()
 
     m_elfPid = pid;
 
-    //signal(SIGTRAP, sigtrap_handler);
-    //signal(SIGCHLD, sigchld_handler);
-    //printf("Line::execute! child=%d\n", pid);
+sleep(1);
 
     task_t  port;
     int res;
@@ -99,7 +97,6 @@ bool Line::execute()
         printf("Line::execute: Failed to get threads for child\n");
         return false;
     }
-
 
     // Set the Trace flag on the child
     x86_thread_state_t gp_regs;
