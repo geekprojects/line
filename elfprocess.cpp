@@ -46,8 +46,9 @@ uint64_t tls_get_addr()
 return g_elfProcess->getFS();
 }
 
-ElfProcess::ElfProcess(ElfExec* exec)
+ElfProcess::ElfProcess(Line* line, ElfExec* exec)
 {
+    m_line = line;
     g_elfProcess = this;
 
     m_elf = exec;
@@ -58,7 +59,6 @@ ElfProcess::ElfProcess(ElfExec* exec)
 
 bool ElfProcess::start(int argc, char** argv)
 {
-
     // Set up sigtrap handler
     struct sigaction act;
     memset (&act, 0, sizeof(act));
@@ -113,6 +113,9 @@ bool ElfProcess::start(int argc, char** argv)
 #ifdef DEBUG
     printf("ElfProcess::start: suspending...\n");
 #endif
+
+    // Tell the parent that we're ready!
+    m_line->signal();
 
     // Wait for our parent to enable single step tracing etc
     task_suspend(mach_task_self());

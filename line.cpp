@@ -38,15 +38,28 @@ static Line* g_line = NULL;
 Line::Line()
 {
     g_line = this;
+    m_semaphore = NULL;
 }
 
 Line::~Line()
 {
+    if (m_semaphore != NULL)
+    {
+        sem_close(m_semaphore);
+    }
 }
 
 bool Line::open(const char* elfpath)
 {
     m_elfBinary.load(elfpath);
+
+    m_semaphore = sem_open("line", O_CREAT, 0644);
+    if (m_semaphore == SEM_FAILED)
+    {
+        printf("Line::open: Failed to create semaphore\n");
+        return false;
+    }
+
     return true;
 }
 
@@ -55,7 +68,7 @@ bool Line::execute(int argc, char** argv)
     pid_t pid = fork();
     if (pid == 0)
     {
-        ElfProcess* elfProcess = new ElfProcess(&m_elfBinary);
+        ElfProcess* elfProcess = new ElfProcess(this, &m_elfBinary);
 
         bool res;
         res = m_elfBinary.map();
@@ -78,7 +91,7 @@ bool Line::execute(int argc, char** argv)
 
     m_elfPid = pid;
 
-sleep(1);
+    sem_wait(m_semaphore);
 
     task_t  port;
     int res;
@@ -128,5 +141,10 @@ sleep(1);
     fflush(stdout);
 
     return true;
+}
+
+void Line::signal()
+{
+    sem_post(m_semaphore);
 }
 

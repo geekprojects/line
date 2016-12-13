@@ -23,11 +23,13 @@
 
 #include <signal.h>
 
+#include "line.h"
 #include "elfexec.h"
 
 class ElfProcess
 {
  private:
+    Line* m_line;
     ElfExec* m_elf;
 
     uint64_t m_fs;
@@ -70,7 +72,7 @@ class ElfProcess
     }
 
  public:
-    ElfProcess(ElfExec* exec);
+    ElfProcess(Line* line, ElfExec* exec);
     ~ElfProcess();
 
     bool start(int argc, char** argv);

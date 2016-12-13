@@ -21,6 +21,8 @@
 #ifndef __LINE_H_
 #define __LINE_H_
 
+#include <semaphore.h>
+
 #include "elfexec.h"
 
 class Line
@@ -29,6 +31,8 @@ class Line
     ElfExec m_elfBinary;
 
     pid_t m_elfPid;
+    sem_t* m_semaphore;
+
  public:
     Line();
     ~Line();
@@ -36,6 +40,8 @@ class Line
     bool open(const char* elfpath);
 
     bool execute(int argc, char** argv);
+
+    void signal();
 
     ElfExec* getElfBinary() { return &m_elfBinary; }
 };
