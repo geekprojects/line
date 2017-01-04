@@ -41,6 +41,8 @@
 #include "linux/term.h"
 #include "utils.h"
 
+//#define DEBUG
+
 void stat2linux(struct stat osx_stat, struct linux_stat* linux_stat)
 {
     memset(linux_stat, 0, sizeof(struct linux_stat));
@@ -62,8 +64,54 @@ void stat2linux(struct stat osx_stat, struct linux_stat* linux_stat)
     linux_stat->st_ctime_nsec = 0;
 }
 
+int errno2linux(int err)
+{
+    int linux_errno = err;
+
+    if (err == EAGAIN)
+    {
+        linux_errno = LINUX_EAGAIN;
+    }
+    else if (err <= 34)
+    {
+        // Most of the first 34 errnos are the same
+        linux_errno = err;
+    }
+    else
+    {
+        printf("ElfProcess::errno2linux: Unhandled errno: %d\n", err);
+        exit(1);
+    }
+    return linux_errno;
+}
+
+void ElfProcess::syscallErrnoResult(ucontext_t* ucontext, int res, bool success, int err)
+{
+#ifdef DEBUG
+    printf("ElfProcess::syscallErrnoResult: res=%d, err=%d\n", res, err);
+#endif
+
+    if (success)
+    {
+        ucontext->uc_mcontext->__ss.__rax = res;
+    }
+    else
+    {
+        int64_t linux_errno = errno2linux(err);
+        ucontext->uc_mcontext->__ss.__rax = (uint64_t)(-linux_errno);
+#ifdef DEBUG
+        printf("ElfProcess::syscallErrnoResult: Returning: %d (%llx)\n", linux_errno, ucontext->uc_mcontext->__ss.__rax);
+#endif
+    }
+#ifdef DEBUG
+    printf("ElfProcess::syscallErrnoResult: Returning: %d\n", ucontext->uc_mcontext->__ss.__rax);
+#endif
+}
+
 bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
 {
+    errno = 0;
+
     switch (syscall)
     {
         case 0x0: // sys_read
@@ -71,11 +119,12 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             unsigned int fd = (ucontext->uc_mcontext->__ss.__rdi);
             const char* buf = (const char*)(ucontext->uc_mcontext->__ss.__rsi);
             size_t count = ucontext->uc_mcontext->__ss.__rdx;
-            int res = read(fd, (void*)buf, count);
 #ifdef DEBUG
-            printf("ElfProcess::execSyscall: sys_read: fd=%d, buf=%p, count=%lu: res=%d\n", fd, buf, count, res);
+            printf("ElfProcess::execSyscall: sys_read: fd=%d, buf=%p, count=%lu\n", fd, buf, count);
 #endif
-            ucontext->uc_mcontext->__ss.__rax = res;
+            int res = read(fd, (void*)buf, count);
+            int err = errno;
+            syscallErrnoResult(ucontext, res, res >= 0, err);
         } break;
 
         case 0x1: // write
@@ -84,11 +133,13 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             const char* buf = (const char*)(ucontext->uc_mcontext->__ss.__rsi);
             size_t count = ucontext->uc_mcontext->__ss.__rdx;
 
-            int res = write(fd, buf, count);
 #ifdef DEBUG
-            printf("ElfProcess::execSyscall: sys_write: fd=%d, buf=%p, count=%lu: res=%d\n", fd, buf, count, res);
+            printf("ElfProcess::execSyscall: sys_write: fd=%d, buf=%p, count=%lu\n", fd, buf, count);
 #endif
-            ucontext->uc_mcontext->__ss.__rax = res;
+
+            int res = write(fd, buf, count);
+            int err = errno;
+            syscallErrnoResult(ucontext, res, res >= 0, err);
         } break;
 
         case 0x2: // open
@@ -96,9 +147,9 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             const char* filename = (const char*)(ucontext->uc_mcontext->__ss.__rdi);
             int flags = ucontext->uc_mcontext->__ss.__rsi;
             int mode = ucontext->uc_mcontext->__ss.__rdx;
-#ifdef DEBUG
+//#ifdef DEBUG
             printf("ElfProcess::execSyscall: sys_open: filename=%s, flags=0x%x, mode=0x%x\n", filename, flags, mode);
-#endif
+//#endif
 
             //if (!strncmp("/etc/", filename, 5) || !strncmp("/proc/", filename, 6))
             if (!strncmp("/proc/", filename, 6))
@@ -107,29 +158,30 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
                 exit(1);
             }
 
-            int fd = open(filename, flags, mode);
+            int res = open(filename, flags, mode);
+            int err = errno;
 #ifdef DEBUG
-            printf("ElfProcess::execSyscall: sys_open: fd=%d\n", fd);
+            printf("ElfProcess::execSyscall: sys_open: res=%d, errno=%d\n", res, err);
 #endif
-
-            ucontext->uc_mcontext->__ss.__rax = fd;
+            syscallErrnoResult(ucontext, res, res >= 0, err);
         } break;
 
         case 0x3: // sys_close
         {
             unsigned int fd = (ucontext->uc_mcontext->__ss.__rdi);
-            if (fd != 0 && fd != 1)
+
+#ifdef DEBUG
+            printf("ElfProcess::execSyscall: sys_close: fd=%u\n", fd);
+#endif
+            if (fd > 2)
             {
                 int res = close(fd);
-#ifdef DEBUG
-                printf("ElfProcess::execSyscall: sys_close: fd=%u, res=%d\n", fd, res);
-#endif
-                ucontext->uc_mcontext->__ss.__rax = res;
+                syscallErrnoResult(ucontext, res, res == 0, errno);
             }
             else
             {
 #ifdef DEBUG
-                printf("ElfProcess::execSyscall: sys_close: fd=%u, STDOUT/IN\n", fd);
+                printf("ElfProcess::execSyscall: sys_close: fd=%u, STDOUT/IN/ERR\n", fd);
 #endif
                 ucontext->uc_mcontext->__ss.__rax = 0;
             }
@@ -194,6 +246,20 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             ucontext->uc_mcontext->__ss.__rax = res;
         } break;
 
+        case 0x8: // sys_lseek
+        {
+            unsigned int fd = ucontext->uc_mcontext->__ss.__rdi;
+            uint64_t offset = ucontext->uc_mcontext->__ss.__rsi;
+            unsigned int origin = ucontext->uc_mcontext->__ss.__rdx;
+
+//#ifdef DEBUG
+            printf("ElfProcess::execSyscall: sys_lseek: fd=%d, offset=%lld, origin=%d\n", fd, offset, origin);
+//#endif
+            int64_t res = lseek(fd, offset, origin);
+            int err = errno;
+            printf("ElfProcess::execSyscall: sys_lseek: -> res=%lld, err=%d\n", res, err);
+            syscallErrnoResult(ucontext, res, res >=0, err);
+        } break;
 
         case 0x9: // sys_mmap
         {
@@ -436,6 +502,11 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             ucontext->uc_mcontext->__ss.__rax = res;
         } break;
 
+        case 0x27: // sys_getpid
+        {
+            ucontext->uc_mcontext->__ss.__rax = getpid();
+        } break;
+
         case 0x3f: // old uname
         {
             linux_oldutsname* utsname = (linux_oldutsname*)ucontext->uc_mcontext->__ss.__rdi;
@@ -462,6 +533,35 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
 #endif
         } break;
 
+        case 0x50: // sys_chdir
+        {
+            const char* filename = (char*)(ucontext->uc_mcontext->__ss.__rdi);
+            printf("ElfProcess::execSyscall: sys_chdir: filename=%s\n", filename);
+            int res;
+            res = chdir(filename);
+            syscallErrnoResult(ucontext, res, res == 0, errno);
+        } break;
+
+        case 0x51: // sys_fchdir
+        {
+            int fd = ucontext->uc_mcontext->__ss.__rdi;
+            printf("ElfProcess::execSyscall: sys_fchdir: fd=%d\n", fd);
+            int res;
+            res = fchdir(fd);
+            syscallErrnoResult(ucontext, res, res == 0, errno);
+        } break;
+
+        case 0x53: // sys_mkdir
+        {
+            const char* pathname = (char*)(ucontext->uc_mcontext->__ss.__rdi);
+            unsigned int mode = ucontext->uc_mcontext->__ss.__rsi;
+            printf("ElfProcess::execSyscall: sys_mkdir: pathname=%s, mode=0x%x\n", pathname, mode);
+
+            int res;
+            res = mkdir(pathname, mode);
+            syscallErrnoResult(ucontext, res, res == 0, errno);
+        } break;
+
         case 0x59: // sys_readlink
         {
             const char* path = (const char*)(ucontext->uc_mcontext->__ss.__rdi);
@@ -482,10 +582,18 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             {
                 res = readlink(path, buf, bufsize);
             }
-#ifdef DEBUG
-            printf("ElfProcess::execSyscall: sys_readlink: result: %lld (%s)\n", res, buf);
-#endif
+            syscallErrnoResult(ucontext, res, res == 0, errno);
+        } break;
 
+        case 0x5f: // sys_umask
+        {
+            int mask = ucontext->uc_mcontext->__ss.__rdi;
+
+            printf("ElfProcess::execSyscall: sys_umask: mask=%d\n", mask);
+
+            int res;
+            res = umask(mask);
+            printf("ElfProcess::execSyscall: sys_umask: res=%d\n", res);
             ucontext->uc_mcontext->__ss.__rax = res;
         } break;
 
