@@ -37,13 +37,15 @@
 #include "elflibrary.h"
 #include "utils.h"
 
+//#define DEBUG
+
 using namespace std;
 
 static ElfProcess* g_elfProcess = NULL;
 
 uint64_t tls_get_addr()
 {
-return g_elfProcess->getFS();
+    return g_elfProcess->getFS();
 }
 
 ElfProcess::ElfProcess(Line* line, ElfExec* exec)
@@ -81,34 +83,63 @@ bool ElfProcess::start(int argc, char** argv)
     m_brk = m_elf->getEnd();
 
     // Set up TLS
-    int tlssize = m_elf->getTLSSize();
-    int tlspos = tlssize;
+    int tlssize = m_elf->getTLSSize() + 8;
     map<string, ElfLibrary*> libs = m_elf->getLibraries();
     map<string, ElfLibrary*>::iterator it;
     for (it = libs.begin(); it != libs.end(); it++)
     {
         int size = it->second->getTLSSize();
-#ifdef DEBUG
-        printf("ElfProcess::start: TLS: %s: size=0x%x, pos=0x%x\n", it->first.c_str(), size, tlssize);
-#endif
-        it->second->setTLSBase(tlssize);
         tlssize += size;
     }
+
 #ifdef DEBUG
-    printf("ElfProcess::start: tlssize=%d\n", tlssize);
+    printf("ElfProcess::start: TLS: Total size: %d\n", tlssize);
 #endif
 
-    m_fs = (uint64_t)malloc(tlssize);
+    /*
+     *    +---------+
+     * -f |         | FS Base
+     *    +---------+
+     * -8 |         |
+     *    +---------+
+     * 0  | fs addr | FS Pointer
+     *    +---------+
+     */
+
+    int tlspos = 0;//tlssize;
+    for (it = libs.begin(); it != libs.end(); it++)
+    {
+        int size = it->second->getTLSSize();
+        tlspos -= size;
+#ifdef DEBUG
+        printf("ElfProcess::start: TLS: %s: size=0x%x, pos=%d\n", it->first.c_str(), size, tlspos);
+#endif
+        it->second->setTLSBase(-tlspos);
+    }
+
+    m_fs = (uint64_t)malloc(tlssize + 1024);
+    m_fsPtr = m_fs + tlssize;
+#ifdef DEBUG
+    printf("ElfProcess::start: TLS: FS: 0x%llx - 0x%llx\n", m_fs, m_fsPtr);
+#endif
 
     m_elf->relocateLibraries();
     m_elf->relocate();
 
     tlspos = m_elf->getTLSSize();
+    uint64_t tlsend = m_fsPtr - (tlspos + 0);
     for (it = libs.begin(); it != libs.end(); it++)
     {
-        it->second->initTLS((void*)(m_fs + tlspos));
-        tlspos += it->second->getTLSSize();
+        int size = it->second->getTLSSize();
+        tlsend -= size;
+        void* initpos = (void*)(tlsend /*- tlspos*/);
+#ifdef DEBUG
+        printf("ElfProcess::start: TLS: %s: init: initpos=%p\n", it->first.c_str(), initpos);
+#endif
+        it->second->initTLS(initpos);
     }
+
+    writeFS64(0, m_fsPtr);
 
 #ifdef DEBUG
     printf("ElfProcess::start: suspending...\n");
@@ -207,11 +238,11 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
     {
         printregs(ucontext);
     }
-    if ((uint64_t)info->si_addr == 0x4013b8)
+#endif
+    if ((uint64_t)info->si_addr == 0x40dd52)
     {
         printregs(ucontext);
     }
-#endif
 
     while (true)
     {
@@ -240,24 +271,19 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 #endif
         if (*addr == 0x0f && *(addr + 1) == 0x05)
         {
+            int syscall = ucontext->uc_mcontext->__ss.__rax;
+
 #ifdef DEBUG
-            printf("trap: errno=%d, address=%p: SYSCALL\n", info->si_errno, info->si_addr);
+            printf("ElfProcess: trap: 0x%x: SYSCALL 0x%x\n", info->si_addr, syscall);
 #endif
 
-            //printf("child_signal_handler:  -> SYSCALL: RAX=%p\n", ucontext->uc_mcontext->__ss.__rax);
-            int syscall = ucontext->uc_mcontext->__ss.__rax;
             execSyscall(syscall, ucontext);
 
             // Skip it!
-            // This has the side effect of not stepping through the next instruction
-            // Hopefully we won't have two syscalls in a row!
             ucontext->uc_mcontext->__ss.__rip += 2;
         }
         else if (*addr == 0x64)
         {
-#ifdef DEBUG
-            printf("ElfProcess::trap: 0x%x:  FS! 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
-#endif
             execFSInstruction(addr + 1, ucontext);
         }
         else

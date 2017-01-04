@@ -33,6 +33,7 @@ class ElfProcess
     ElfExec* m_elf;
 
     uint64_t m_fs;
+    uint64_t m_fsPtr;
     uint64_t m_brk;
     uint64_t m_libraryLoadAddr;
 
@@ -46,6 +47,8 @@ class ElfProcess
     bool execSyscall(uint64_t syscall, ucontext_t* ucontext);
     bool execFSInstruction(uint8_t* rip, ucontext_t* ucontext);
 
+    void syscallErrnoResult(ucontext_t* ucontext, int res, bool success, int err);
+
     uint8_t fetch8();
     uint32_t fetch32();
     uint64_t fetchModRMAddress(int mod, int rm, int rexB, ucontext_t* ucontext);
@@ -55,19 +58,25 @@ class ElfProcess
 
     uint64_t readFS64(int64_t offset)
     {
-        uint64_t* ptr = (uint64_t*)((int64_t)m_fs + offset);
+        uint64_t* ptr = (uint64_t*)((int64_t)m_fsPtr + offset);
+#ifdef DEBUG_FS
+printf("ElfProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsPtr, ptr);
+#endif
         return *ptr;
     }
 
     void writeFS32(int64_t offset, uint32_t value)
     {
-        uint32_t* ptr = (uint32_t*)(m_fs + offset);
+        uint32_t* ptr = (uint32_t*)(m_fsPtr + offset);
         *ptr = value;
     }
 
     void writeFS64(int64_t offset, uint64_t value)
     {
-        uint64_t* ptr = (uint64_t*)((int64_t)m_fs + offset);
+        uint64_t* ptr = (uint64_t*)((int64_t)m_fsPtr + offset);
+#ifdef DEBUG_FS
+        printf("ElfProcess::writeS64: offset=%d, m_fsPtr=0x%llx -> %p = 0x%llx\n", offset, m_fsPtr, ptr, value);
+#endif
         *ptr = value;
     }
 
@@ -78,6 +87,11 @@ class ElfProcess
     bool start(int argc, char** argv);
 
     uint64_t getFS() { return m_fs; };
+    uint64_t getFSPtr()
+    {
+        return m_fsPtr;
+    }
+
     uint64_t getNextLibraryLoadAddr()
     {
         uint64_t addr = m_libraryLoadAddr;
