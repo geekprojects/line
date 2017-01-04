@@ -47,7 +47,7 @@ class ElfBinary
     uint64_t m_end;
     uint64_t m_base;
 
-    uint64_t m_tlsBase;
+    int m_tlsBase;
     int m_tlsSize;
 
     std::vector<uint64_t> m_needed;
@@ -82,7 +82,7 @@ class ElfBinary
     char* getPath() { return m_path; }
 
     int getTLSSize() { return m_tlsSize; }
-    void setTLSBase(uint64_t tlsbase) { m_tlsBase = tlsbase; }
+    void setTLSBase(int tlsbase) { m_tlsBase = tlsbase; }
     void initTLS(void* tls);
     uint64_t getTLSBase();
 
