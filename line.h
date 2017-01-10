@@ -21,7 +21,7 @@
 #ifndef __LINE_H_
 #define __LINE_H_
 
-#include <semaphore.h>
+#include <pthread.h>
 
 #include "elfexec.h"
 
@@ -30,8 +30,12 @@ class Line
  private:
     ElfExec m_elfBinary;
 
-    pid_t m_elfPid;
-    sem_t* m_semaphore;
+    pthread_t m_elfThread;
+    pthread_cond_t m_cond;
+    pthread_mutex_t m_condMutex;
+
+    pthread_cond_t m_singleStepCond;
+    pthread_mutex_t m_singleStepCondMutex;
 
  public:
     Line();
@@ -42,8 +46,11 @@ class Line
     bool execute(int argc, char** argv);
 
     void signal();
+    void waitForSingleStep();
 
     ElfExec* getElfBinary() { return &m_elfBinary; }
+
+    void elfMain(int argc, char** argv);
 };
 
 

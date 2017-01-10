@@ -38,83 +38,78 @@ static Line* g_line = NULL;
 Line::Line()
 {
     g_line = this;
-    m_semaphore = NULL;
+
+    pthread_cond_init(&m_cond, NULL);
+    pthread_mutex_init(&m_condMutex, NULL);
+    pthread_cond_init(&m_singleStepCond, NULL);
+    pthread_mutex_init(&m_singleStepCondMutex, NULL);
 }
 
 Line::~Line()
 {
-    if (m_semaphore != NULL)
-    {
-        sem_close(m_semaphore);
-    }
+    pthread_cond_destroy(&m_cond);
+    pthread_mutex_destroy(&m_condMutex);
+    pthread_cond_destroy(&m_singleStepCond);
+    pthread_mutex_destroy(&m_singleStepCondMutex);
 }
 
 bool Line::open(const char* elfpath)
 {
-    m_elfBinary.load(elfpath);
+    bool res;
 
-    m_semaphore = sem_open("line", O_CREAT, 0644);
-    if (m_semaphore == SEM_FAILED)
+    res = m_elfBinary.load(elfpath);
+    if (!res)
     {
-        printf("Line::open: Failed to create semaphore\n");
         return false;
     }
 
     return true;
 }
 
+struct elfthreaddata
+{
+    Line* line;
+    int argc;
+    char** argv;
+};
+
+static void* elfentry(void* args)
+{
+    elfthreaddata* data = (elfthreaddata*)args;
+    data->line->elfMain(data->argc, data->argv);
+    return NULL;
+}
+
 bool Line::execute(int argc, char** argv)
 {
-    pid_t pid = fork();
-    if (pid == 0)
-    {
-        ElfProcess* elfProcess = new ElfProcess(this, &m_elfBinary);
+    elfthreaddata* data = new elfthreaddata();
+    data->line = this;
+    data->argc = argc;
+    data->argv = argv;
 
-        bool res;
-        res = m_elfBinary.map();
-        if (!res)
-        {
-            exit(1);
-        }
+    // Create ELF Thread
+    pthread_create(&m_elfThread, NULL, elfentry, data);
 
-        res = m_elfBinary.loadLibraries();
-        if (!res)
-        {
-            exit(1);
-        }
+    // Get ELF Thread port
+    task_t port = pthread_mach_thread_np(m_elfThread);
 
-        elfProcess->start(argc, argv);
+    // Wait for ELF Thread to be ready
+    pthread_cond_wait(&m_cond, &m_condMutex);
 
-        // Should never get here!
-        exit(255);
-    }
-
-    m_elfPid = pid;
-
-    sem_wait(m_semaphore);
-
-    task_t  port;
     int res;
-    res = task_for_pid(mach_task_self(), pid, &port);
-    if (res != 0)
-    {
-        printf("Line::execute: Failed to get port for child\n");
-        return false;
-    }
 
-    thread_act_port_array_t thread_list;
-    mach_msg_type_number_t thread_count;
-    res = task_threads(port, &thread_list, &thread_count);
-    if (res != 0)
-    {
-        printf("Line::execute: Failed to get threads for child\n");
-        return false;
-    }
+#ifdef DEBUG
+    printf("Line::execute: Setting single step...\n");
+#endif
 
-    // Set the Trace flag on the child
+    /*
+     * Set the Trace flag on the child
+     */
+
+    // Get current state
     x86_thread_state_t gp_regs;
     unsigned int gp_count = x86_THREAD_STATE_COUNT;
-    res = thread_get_state(thread_list[0], x86_THREAD_STATE, (thread_state_t) & gp_regs, &gp_count);
+    res = thread_get_state(port, x86_THREAD_STATE, (thread_state_t)&gp_regs, &gp_count);
     if (res != 0)
     {
         int err = errno;
@@ -124,27 +119,49 @@ bool Line::execute(int argc, char** argv)
 
     // Set Single Step flags in eflags
     gp_regs.uts.ts64.__rflags = (gp_regs.uts.ts64.__rflags & ~X86_EFLAGS_T) | X86_EFLAGS_T;
-    res = thread_set_state (thread_list[0], x86_THREAD_STATE,
-                             (thread_state_t) &gp_regs, gp_count);
+    res = thread_set_state(
+        port,
+        x86_THREAD_STATE,
+        (thread_state_t) &gp_regs,
+        gp_count);
 
-    // Restart the child
-    res = task_resume(port);
-    if (res != 0)
-    {
-        printf("Line::execute: Failed to resume child\n");
-        return false;
-    }
+    // Wake the ELF Thread (In to Single Step mode)
+    pthread_cond_signal(&m_singleStepCond);
 
-    int s;
-    wait(&s);
-    printf("Line::execute: Child exited with status %d\n", WEXITSTATUS(s));
-    fflush(stdout);
+    // Wait for the ELF thread to complete
+    void* value;
+    pthread_join(m_elfThread, &value);
 
     return true;
 }
 
+void Line::elfMain(int argc, char** argv)
+{
+    ElfProcess* elfProcess = new ElfProcess(this, &m_elfBinary);
+
+    bool res;
+    res = m_elfBinary.map();
+    if (!res)
+    {
+        exit(1);
+    }
+
+    res = m_elfBinary.loadLibraries();
+    if (!res)
+    {
+        exit(1);
+    }
+
+    elfProcess->start(argc, argv);
+}
+
 void Line::signal()
 {
-    sem_post(m_semaphore);
+    pthread_cond_signal(&m_cond);
+}
+
+void Line::waitForSingleStep()
+{
+    pthread_cond_wait(&m_singleStepCond, &m_singleStepCondMutex);
 }
 
