@@ -35,8 +35,6 @@ class ElfLibrary : public ElfBinary
     ElfLibrary(ElfExec* exec);
     virtual ~ElfLibrary();
 
-    virtual bool map();
-
     virtual void entry(int argc, char** argv, char** envp);
 };
 

@@ -73,109 +73,6 @@ void ElfExec::relocateLibraries()
     }
 }
 
-bool ElfExec::map()
-{
-    int i;
-    Elf64_Phdr* phdr = (Elf64_Phdr*)(m_image + m_header->e_phoff);
-
-    m_end = 0;
-
-    for (i = 0; i < m_header->e_phnum; i++)
-    {
-#ifdef DEBUG
-        printf("ElfExec::map: Program Header: %d: type=0x%x, flags=0x%x\n", i, phdr[i].p_type, phdr[i].p_flags);
-#endif
-        if (phdr[i].p_type == PT_LOAD)
-        {
-
-            uint64_t start = ELF_ALIGNDOWN(phdr[i].p_vaddr);
-            size_t len = ELF_ALIGNUP(phdr[i].p_memsz + ELF_ALIGNUP(phdr->p_vaddr)) - ELF_ALIGNDOWN(phdr->p_vaddr);
-
-#ifdef DEBUG
-            printf(
-                "ElfExec::map: Specified: 0x%llx-0x%llx, Aligned: 0x%llx-0x%llx\n",
-                phdr[i].p_vaddr,
-                phdr[i].p_vaddr + phdr[i].p_memsz,
-                start,
-                start + len);
-#endif
-
-            int prot = PROT_READ | PROT_WRITE;
-            if (phdr[i].p_flags & PF_X)
-            {
-                prot |= PROT_EXEC;
-            }
-
-            int flags = MAP_ANON | MAP_PRIVATE;
-            if (start != 0)
-            {
-                flags |= MAP_FIXED;
-            }
-
-            void* maddr = mmap(
-                (void*)start,
-                len,
-                prot,
-                flags,
-                -1,
-                0);
-            int err = errno;
-
-            if (maddr == (void*)-1)
-            {
-                printf("ElfExec::map: Program Header: %d:  -> maddr=%p, errno=%d\n", i, maddr, err);
-                return 1;
-            }
-
-#ifdef DEBUG
-            printf("ElfExec::map: Program Header: %d: memcpy(0x%llx-0x%llx, 0x%llx-0x%llx, %d)\n",
-                i,
-                (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
-                (uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr) + phdr[i].p_filesz,
-                m_image + phdr[i].p_offset,
-                m_image + phdr[i].p_offset + phdr[i].p_filesz,
-                phdr[i].p_filesz);
-#endif
-            memcpy(
-                (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
-                m_image + phdr[i].p_offset,
-                phdr[i].p_filesz);
-
-            if (phdr[i].p_vaddr + phdr[i].p_memsz > m_end)
-            {
-                m_end = ELF_ALIGNUP(phdr[i].p_vaddr + phdr[i].p_memsz);
-            }
-        }
-        else if (phdr[i].p_type == PT_TLS)
-        {
-            m_tlsSize = phdr[i].p_memsz;
-        }
-        else if (phdr[i].p_type == PT_DYNAMIC)
-        {
-            readDynamicHeader(&(phdr[i]));
-        }
-    }
-
-    Elf64_Shdr* bssSection = findSection(".bss");
-    if (bssSection != NULL)
-    {
-#ifdef DEBUG
-        printf(
-            "ElfExec::map: Clearing BSS: addr=0x%llx-0x%llx, size=%llu\n",
-            bssSection->sh_addr,
-            bssSection->sh_addr + bssSection->sh_size - 1,
-            bssSection->sh_size);
-#endif
-        memset((void*)bssSection->sh_addr, 0x0, bssSection->sh_size);
-    }
-    else
-    {
-        printf("ElfExec::map: Failed to find BSS section\n");
-    }
-
-    return true;
-}
-
 /* This calls the entry point.  The SVR4/i386 ABI (pages 3-31, 3-32)
    says that when the entry point runs, most registers' values are
    unspecified, except for:
@@ -201,7 +98,7 @@ static void exitfunction()
 
 void ElfExec::entry(int argc, char** argv, char** envp)
 {
-    uint64_t entry = m_header->e_entry;
+    uint64_t entry = m_header->e_entry + getBase();
 
     char randbytes[16];
     int i;

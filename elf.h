@@ -140,6 +140,7 @@
 #define R_X86_64_GOTPCREL       9       /* 32 bit signed PC relative
                                            offset to GOT */
 #define R_X86_64_DTPMOD64       16      /* ID of module containing symbol */
+#define R_X86_64_DTPOFF64       17      /* Offset in module's TLS block */
 #define R_X86_64_TPOFF64        18      /* Offset in initial TLS block */
 #define R_X86_64_IRELATIVE      37      /* Adjust indirectly by program base */
 

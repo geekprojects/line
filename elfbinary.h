@@ -57,6 +57,9 @@ class ElfBinary
 
     bool readDynamicHeader(Elf64_Phdr* header);
 
+    bool mapStatic();
+    bool mapDynamic();
+
     void relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab, const char* strtab);
 
  public:
@@ -69,7 +72,7 @@ class ElfBinary
     const char* getString(int name);
     Elf64_Sym* findSymbol(const char* sym);
 
-    virtual bool map() = 0;
+    bool map();
     uint64_t getEnd() { return m_end; }
 
     void setBase(uint64_t base) { m_base = base; }

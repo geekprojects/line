@@ -39,7 +39,7 @@
 
 using namespace std;
 
-#undef DEBUG_RELOCATE
+#define DEBUG_RELOCATE
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
@@ -76,6 +76,12 @@ rtld_global g_rtldGlobal =
 int __libc_enable_secure = 0;
 
 uint64_t tls_get_addr();
+
+const char* g_libpaths[] =
+{
+    "root/lib/x86_64-linux-gnu/",
+    "root/usr/lib/x86_64-linux-gnu/"
+};
 
 ElfBinary::ElfBinary()
 {
@@ -250,7 +256,7 @@ bool ElfBinary::readDynamicHeader(Elf64_Phdr* header)
 
         setDynValue(dyn[j].d_tag, dyn[j].d_un.d_val);
 
-#ifdef DEBUG
+#ifdef DEBUG_DYNAMIC
         if (dyn[j].d_tag == DT_STRTAB)
         {
             name = "STRTAB";
@@ -280,12 +286,238 @@ bool ElfBinary::readDynamicHeader(Elf64_Phdr* header)
             name = "INIT";
         }
 
-#ifdef DEBUG
         printf("ElfBinary::readDynamicHeader: %s: %s (%lld) = 0x%llx\n", m_path, name, dyn[j].d_tag, dyn[j].d_un.d_val);
-#endif
 #endif
     }
 
+    return true;
+}
+
+bool ElfBinary::map()
+{
+    bool res;
+
+    if (m_header->e_type == ET_EXEC)
+    {
+        res = mapStatic();
+    }
+    else if (m_header->e_type == ET_DYN)
+    {
+        res = mapDynamic();
+    }
+    else
+    {
+        printf("ElfBinary::map: Unhandled ELF type: %d\n", m_header->e_type);
+        exit(255);
+    }
+
+    if (res)
+    {
+        Elf64_Shdr* bssSection = findSection(".bss");
+        if (bssSection != NULL)
+        {
+#ifdef DEBUG
+            printf(
+                "ElfBinary::map: %s: Clearing BSS: addr=0x%llx-0x%llx, size=%llu\n",
+                m_path,
+                m_base + bssSection->sh_addr,
+                m_base + bssSection->sh_addr + bssSection->sh_size - 1,
+                bssSection->sh_size);
+#endif
+            memset((void*)(m_base + bssSection->sh_addr), 0x0, bssSection->sh_size);
+        }
+        else
+        {
+            printf("ElfBinary::mapDynamic: %s: Failed to find BSS section\n", m_path);
+        }
+    }
+
+    return res;
+}
+
+bool ElfBinary::mapStatic()
+{
+    int i;
+    Elf64_Phdr* phdr = (Elf64_Phdr*)(m_image + m_header->e_phoff);
+
+    m_end = 0;
+
+    for (i = 0; i < m_header->e_phnum; i++)
+    {
+#ifdef DEBUG
+        printf("ElfBinary::mapStatic: Program Header: %d: type=0x%x, flags=0x%x\n", i, phdr[i].p_type, phdr[i].p_flags);
+#endif
+        if (phdr[i].p_type == PT_LOAD)
+        {
+
+            uint64_t start = ELF_ALIGNDOWN(phdr[i].p_vaddr);
+            size_t len = ELF_ALIGNUP(phdr[i].p_memsz + ELF_ALIGNUP(phdr->p_vaddr)) - ELF_ALIGNDOWN(phdr->p_vaddr);
+
+#ifdef DEBUG
+            printf(
+                "ElfBinary::mapStatic: Specified: 0x%llx-0x%llx, Aligned: 0x%llx-0x%llx\n",
+                phdr[i].p_vaddr,
+                phdr[i].p_vaddr + phdr[i].p_memsz,
+                start,
+                start + len);
+#endif
+
+            int prot = PROT_READ | PROT_WRITE;
+            if (phdr[i].p_flags & PF_X)
+            {
+                prot |= PROT_EXEC;
+            }
+
+            int flags = MAP_ANON | MAP_PRIVATE;
+            if (start != 0)
+            {
+                flags |= MAP_FIXED;
+            }
+
+            void* maddr = mmap(
+                (void*)start,
+                len,
+                prot,
+                flags,
+                -1,
+                0);
+            int err = errno;
+
+            if (maddr == (void*)-1)
+            {
+                printf("ElfBinary::mapStatic: Program Header: %d:  -> maddr=%p, errno=%d\n", i, maddr, err);
+                return 1;
+            }
+
+#ifdef DEBUG
+            printf("ElfBinary::mapStatic: Program Header: %d: memcpy(0x%llx-0x%llx, 0x%llx-0x%llx, %d)\n",
+                i,
+                (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
+                (uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr) + phdr[i].p_filesz,
+                m_image + phdr[i].p_offset,
+                m_image + phdr[i].p_offset + phdr[i].p_filesz,
+                phdr[i].p_filesz);
+#endif
+            memcpy(
+                (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
+                m_image + phdr[i].p_offset,
+                phdr[i].p_filesz);
+
+            if (phdr[i].p_vaddr + phdr[i].p_memsz > m_end)
+            {
+                m_end = ELF_ALIGNUP(phdr[i].p_vaddr + phdr[i].p_memsz);
+            }
+        }
+        else if (phdr[i].p_type == PT_TLS)
+        {
+            m_tlsSize = phdr[i].p_memsz;
+        }
+        else if (phdr[i].p_type == PT_DYNAMIC)
+        {
+            readDynamicHeader(&(phdr[i]));
+        }
+    }
+
+    return true;
+}
+
+bool ElfBinary::mapDynamic()
+{
+    int i;
+
+#ifdef DEBUG
+    printf("ElfBinary::mapDynamic: %s\n", m_path);
+#endif
+
+    Elf64_Phdr* phdr = (Elf64_Phdr*)(m_image + m_header->e_phoff);
+
+    uint64_t loadMin = 0;
+    uint64_t loadMax = 0;
+
+    Elf64_Shdr* shdr = (Elf64_Shdr*)(m_image + m_header->e_shoff);
+    for (i = 0; i < m_header->e_shnum; i++)
+    {
+        if (shdr[i].sh_flags & SHF_ALLOC)
+        {
+            uint64_t min = (shdr[i].sh_addr & ~0xfff);
+            uint64_t max = min + ALIGN(shdr[i].sh_size + ELF_PAGEOFFSET(shdr[i].sh_addr), 4096);
+            if (i == 0)
+            {
+                loadMin = min;
+                loadMax = max;
+            }
+            else
+            {
+                if (min < loadMin)
+                {
+                    loadMin = min;
+                }
+                if (max > loadMax)
+                {
+                    loadMax = max;
+                }
+            }
+        }
+    }
+
+#ifdef DEBUG
+    printf("ElfBinary::mapDynamic: %s: loadMin=0x%llx, loadMax=0x%llx\n", m_path, loadMin, loadMax);
+#endif
+
+    uint64_t loadAddr = m_elfProcess->getNextLibraryLoadAddr();
+//#ifdef DEBUG
+    printf("ElfBinary::mapDynamic: %s: loadAddr=0x%llx\n", m_path, loadAddr);
+//#endif
+
+    // Allocate a base location for this library now we know how big it is
+    m_base = (uint64_t)mmap(
+        (void*)loadAddr,
+        loadMax,
+        PROT_READ | PROT_WRITE | PROT_EXEC,
+        MAP_ANON | MAP_PRIVATE,
+        -1,
+        0);
+
+#ifdef DEBUG
+    printf("ElfBinary::mapDyanmic: m_base=0x%llx\n", m_base);
+#endif
+
+    // Now we have a base, we can copy the library to where its new home
+    for (i = 0; i < m_header->e_phnum; i++)
+    {
+        if (phdr[i].p_type == PT_LOAD)
+        {
+
+            uint64_t start = phdr[i].p_vaddr + loadMin;
+            size_t len = ALIGN(phdr[i].p_memsz + ELF_PAGEOFFSET(phdr->p_vaddr), 4096);
+            start += m_base;
+
+#ifdef DEBUG
+            printf(
+                "ElfBinary::mapDynamic: %s: Specified: 0x%llx-0x%llx, Remapped: 0x%llx, 0x%llx, Copying to: 0x%llx, 0x%llx\n",
+                m_path,
+                phdr[i].p_vaddr,
+                phdr[i].p_vaddr + phdr[i].p_memsz,
+                start,
+                start + len,
+                start,
+                start + phdr[i].p_filesz);
+#endif
+
+            memcpy(
+                (void*)start,
+                m_image + phdr[i].p_offset,
+                phdr[i].p_filesz);
+        }
+        else if (phdr[i].p_type == PT_DYNAMIC)
+        {
+            readDynamicHeader(&(phdr[i]));
+        }
+        else if (phdr[i].p_type == PT_TLS)
+        {
+            m_tlsSize = phdr[i].p_memsz;
+        }
+    }
     return true;
 }
 
@@ -308,11 +540,6 @@ bool ElfBinary::loadLibraries()
 #endif
 
         string name = string(strtab + needed);
-
-        string libpath = string("root/lib/x86_64-linux-gnu/") + name;
-#ifdef DEBUG
-        printf("ElfBinary::loadLibraries: %s: %s -> %s\n", m_path, name.c_str(), libpath.c_str());
-#endif
 
         if (name == "ld-linux-x86-64.so.2")
         {
@@ -341,33 +568,47 @@ bool ElfBinary::loadLibraries()
         if (library == NULL)
         {
             library = new ElfLibrary(m_exec);
-#ifdef DEBUG
-            printf("ElfBinary::loadLibraries: m_elfProcess=0x%llx\n", m_elfProcess);
-#endif
             library->setElfProcess(m_elfProcess);
+            m_exec->addLibrary(name, library);
 
+            bool res = false;
+            int i;
+            for (i = 0; i < sizeof(g_libpaths) / sizeof(char*); i++)
+            {
+                string libpath = string(g_libpaths[i]) + name;
 #ifdef DEBUG
-            printf("ElfBinary::loadLibraries: %s: LOADING %s -> %s\n", m_path, name.c_str(), libpath.c_str());
+                printf("ElfBinary::loadLibraries: %s: %s -> %s\n", m_path, name.c_str(), libpath.c_str());
 #endif
 
-            bool res;
-            res = library->load(libpath.c_str());
+#ifdef DEBUG
+                printf("ElfBinary::loadLibraries: %s: LOADING %s -> %s\n", m_path, name.c_str(), libpath.c_str());
+#endif
+
+                res = library->load(libpath.c_str());
+                if (res)
+                {
+                    break;
+                }
+            }
+
             if (!res)
             {
+                printf("ElfBinary::loadLibraries: %s: Failed to find library: %s\n", m_path, name.c_str());
                 return false;
             }
 
             res = library->map();
             if (!res)
             {
-                continue;
+                printf("ElfBinary::loadLibraries: %s: Failed to map library: %s\n", m_path, name.c_str());
+                return false;
             }
-            m_exec->addLibrary(name, library);
 
             res = library->loadLibraries();
             if (!res)
             {
-                continue;
+                printf("ElfBinary::loadLibraries: %s: Failed to load libraries: %s\n", m_path, name.c_str());
+                return false;
             }
         }
     }
@@ -433,13 +674,14 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
         if (type == R_X86_64_GLOB_DAT)
         {
             symbol = m_exec->findSymbol(symName);
-            if (symbol != NULL)
+            if (symbol != NULL && symbol->st_value != NULL)
             {
                 lib = m_exec;
 #ifdef DEBUG_RELOCATE
                 printf(
-                    "ElfBinary::relocate: %s: R_X86_64_GLOB_DAT: Found symbol in exec\n",
-                    m_path);
+                    "ElfBinary::relocate: %s: R_X86_64_GLOB_DAT: Found symbol in exec: 0x%llx\n",
+                    m_path,
+                    symbol->st_value);
 #endif
             }
             else
@@ -449,20 +691,24 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
                     "ElfBinary::relocate: %s: R_X86_64_GLOB_DAT: Unable to find symbol\n",
                     m_path);
 #endif
+                    symbol = NULL;
             }
         }
 
-        std::map<std::string, ElfLibrary*>::iterator it;
-        for (it = m_exec->getLibraries().begin(); it != m_exec->getLibraries().end() && symbol == NULL; it++)
+        if (lib == NULL)
         {
-            lib = it->second;
-            symbol = lib->findSymbol(symName);
-            if (symbol != NULL && symbol->st_value != 0)
+            std::map<std::string, ElfLibrary*>::iterator it;
+            for (it = m_exec->getLibraries().begin(); it != m_exec->getLibraries().end() && symbol == NULL; it++)
             {
-                break;
+                lib = it->second;
+                symbol = lib->findSymbol(symName);
+                if (symbol != NULL && symbol->st_value != 0)
+                {
+                    break;
+                }
+                lib = NULL;
+                symbol = NULL;
             }
-            lib = NULL;
-            symbol = NULL;
         }
 
         if (lib != NULL)
@@ -487,10 +733,10 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
     }
     else
     {
-        if (m_header->e_type == ET_DYN)
-        {
-            lib = (ElfLibrary*)this;
-        }
+        //if (m_header->e_type == ET_DYN)
+        //{
+            lib = this;
+        //}
     }
 
     uint64_t destaddr = rela->r_offset + base;
@@ -579,7 +825,7 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
                 }
                 else if (!strcmp(symName, "__libc_enable_secure"))
                 {
-value = (uint64_t)(&__libc_enable_secure);
+                    value = (uint64_t)(&__libc_enable_secure);
 #ifdef DEBUG_RELOCATE
                     printf(
                         "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> __libc_enable_secure\n");
@@ -623,6 +869,15 @@ destaddr,
             *dest64 = m_tlsBase;
         } break;
 
+case R_X86_64_DTPOFF64:
+{
+#ifdef DEBUG
+            printf(
+                "ElfBinary::relocate: R_X86_64_DTPOFF64: 0x%llx\n", m_tlsBase);
+#endif
+            *dest64 = m_tlsBase;
+} break;
+
         case R_X86_64_TPOFF64:
         {
             //*dest64 = ((int)rela->r_addend - m_tlsBase) + (int64_t)m_elfProcess->getFSPtr();
@@ -655,6 +910,7 @@ value);
 
         default:
             printf("ElfBinary::relocate: Unhandled relocation type: %d\n", type);
+exit(255);
             break;
     }
 }
@@ -664,22 +920,16 @@ void ElfBinary::initTLS(void* tls)
     int i;
     Elf64_Phdr* phdr = (Elf64_Phdr*)(m_image + m_header->e_phoff);
 
-    uint64_t base = 0;
-    if (m_header->e_type == ET_DYN)
-    {
-        base = ((ElfLibrary*)this)->getBase();
-    }
-
     for (i = 0; i < m_header->e_phnum; i++)
     {
         if (phdr[i].p_type == PT_TLS)
         {
 #ifdef DEBUG
-            printf("ElfBinary::initTLS: Copying 0x%llx -> 0x%llx\n", phdr[i].p_vaddr + base, tls);
+            printf("ElfBinary::initTLS: Copying 0x%llx -> 0x%llx\n", phdr[i].p_vaddr + getBase(), tls);
 #endif
             memcpy(
                 tls,
-                (void*)(phdr[i].p_vaddr + base),
+                (void*)(phdr[i].p_vaddr + getBase()),
                 phdr[i].p_filesz);
         }
     }

@@ -42,8 +42,6 @@ class ElfExec : public ElfBinary
     ElfExec();
     virtual ~ElfExec();
 
-    virtual bool map();
-
     void addLibrary(std::string name, ElfLibrary* library);
     ElfLibrary* getLibrary(std::string name);
     std::map<std::string, ElfLibrary*>& getLibraries() { return m_libraryMap; };
