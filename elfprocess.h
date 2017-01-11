@@ -95,7 +95,7 @@ printf("ElfProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsPt
     uint64_t getNextLibraryLoadAddr()
     {
         uint64_t addr = m_libraryLoadAddr;
-        m_libraryLoadAddr += 0x10000000;
+        m_libraryLoadAddr += 0x1000000;
         return addr;
     }
 };
