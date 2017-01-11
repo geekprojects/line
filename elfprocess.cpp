@@ -45,7 +45,7 @@ static ElfProcess* g_elfProcess = NULL;
 
 uint64_t tls_get_addr()
 {
-    return g_elfProcess->getFS();
+    return g_elfProcess->getFSPtr();
 }
 
 ElfProcess::ElfProcess(Line* line, ElfExec* exec)
@@ -149,7 +149,7 @@ bool ElfProcess::start(int argc, char** argv)
     m_line->signal();
 
     // Wait for our parent to enable single step tracing etc
-    task_suspend(mach_task_self());
+    m_line->waitForSingleStep();
 
     for (it = libs.begin(); it != libs.end(); it++)
     {
@@ -214,7 +214,7 @@ void ElfProcess::printregs(ucontext_t* ucontext)
 void ElfProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 {
     printf(
-        "ElfProcess::error: sig=%d, errno=%d, address=0x%llx\n",
+        "ElfProcess::error: sig=%d, errno=%d, address=%p\n",
         sig,
         info->si_errno,
         info->si_addr);
@@ -239,10 +239,13 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         printregs(ucontext);
     }
 #endif
+
+#if 0
     if ((uint64_t)info->si_addr == 0x40dd52)
     {
         printregs(ucontext);
     }
+#endif
 
     while (true)
     {
@@ -251,7 +254,7 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         // Save ourselves a segfault
         if (addr == 0)
         {
-            printf("ElfProcess::trap: addr=0x%llx\n", addr);
+            printf("ElfProcess::trap: addr=%p\n", addr);
             printregs(ucontext);
             exit(1);
         }
