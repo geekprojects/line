@@ -27,6 +27,8 @@
 #include <sys/mman.h>
 #include <sys/uio.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <fcntl.h>
 
 #include <pthread.h>
@@ -41,7 +43,7 @@
 #include "linux/term.h"
 #include "utils.h"
 
-//#define DEBUG
+#define DEBUG
 
 void stat2linux(struct stat osx_stat, struct linux_stat* linux_stat)
 {
@@ -421,14 +423,14 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             unsigned long arg = ucontext->uc_mcontext->__ss.__rdx;
             printf("ElfProcess::execSyscall: sys_ioctl: fd=%llx, cmd=0x%llx, arg=0x%llx\n", fd, cmd, arg);
 
-            if (fd != 1)
+            if (fd > 2)
             {
                 printf("ElfProcess::execSyscall: sys_ioctl:  -> Only supported for fd 1\n");
                 exit(1);
             }
             switch (cmd)
             {
-                case TCGETS:
+                case LINUX_TCGETS:
                 {
                     struct termios* t = (struct termios*)arg;
                     printf("ElfProcess::execSyscall: sys_ioctl: TCGETS: iflag=0x%x, oflag=0x%x, cflag=0x%x, lflag=0x%x\n",
@@ -439,13 +441,33 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
                     ucontext->uc_mcontext->__ss.__rax = 0;
                 } break;
 
-                case TIOCGWINSZ:
+                case LINUX_TIOCGWINSZ:
                 {
                     printf("ElfProcess::execSyscall: sys_ioctl: TIOCGWINSZ\n");
-                    struct winsize* ws = (struct winsize*)arg;
+                    struct linux_winsize* ws = (struct linux_winsize*)arg;
                     ws->ws_row = 25;
                     ws->ws_col = 80;
                     ucontext->uc_mcontext->__ss.__rax = 0;
+                } break;
+
+                case LINUX_TIOCGPGRP:
+                {
+                    int res;
+                    pid_t pgrp;
+                    res = ioctl(fd, TIOCGPGRP, &pgrp);
+                    int err = errno;
+                    pid_t* argptr = (pid_t*)arg;
+                    *argptr = pgrp;
+                    syscallErrnoResult(ucontext, res, res >= 0, err);
+                } break;
+
+                case LINUX_TIOCSPGRP:
+                {
+                    int res;
+
+                    res = ioctl(fd, TIOCGPGRP, &arg);
+                    int err = errno;
+                    syscallErrnoResult(ucontext, res, res >= 0, err);
                 } break;
 
                 default:
@@ -507,6 +529,77 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             ucontext->uc_mcontext->__ss.__rax = getpid();
         } break;
 
+        case 0x29: // sys_socket
+        {
+            int family = ucontext->uc_mcontext->__ss.__rdi;
+            int type = ucontext->uc_mcontext->__ss.__rsi;
+            int protocol = ucontext->uc_mcontext->__ss.__rdx;
+            int osx_type = type & 0xf;
+            printf(
+                "ElfProcess::execSyscall: sys_socket: family=0x%x, type=0x%x (0x%x), protocol=0x%x\n",
+                family,
+                type,
+                osx_type,
+                protocol);
+            if (family != 1)
+            {
+                printf("ElfProcess::execSyscall: sys_socket: Unsupported family=0x%x\n", family);
+                exit(255);
+            }
+
+            if (osx_type != 1)
+            {
+                printf("ElfProcess::execSyscall: sys_socket: Unsupported PF_UNIX type=0x%x\n", osx_type);
+                exit(255);
+            }
+
+            if (protocol != 0)
+            {
+                printf("ElfProcess::execSyscall: sys_socket: Unsupported PF_UNIX protocol=0x%x\n", protocol);
+                exit(255);
+            }
+
+            int res;
+            res = socket(family, osx_type, protocol);
+            int err = errno;
+            printf("ElfProcess::execSyscall: sys_socket: res=%d, err=%d\n", res, err);
+            syscallErrnoResult(ucontext, res, res == 0, err);
+        } break;
+
+        case 0x2a: // sys_connect
+        {
+            int fd = ucontext->uc_mcontext->__ss.__rdi;
+            void* addr = (void*)(ucontext->uc_mcontext->__ss.__rsi);
+            int addrlen = ucontext->uc_mcontext->__ss.__rdx;
+
+            printf(
+                "ElfProcess::execSyscall: sys_connect: fd=%d, addr=%p, addrlen=%d\n",
+                fd,
+                addr,
+                addrlen);
+            exit(255);
+        } break;
+
+        case 0x3d: // sys_wait4
+        {
+            int upid = ucontext->uc_mcontext->__ss.__rdi;
+            int* stat_addr = (int*)(ucontext->uc_mcontext->__ss.__rsi);
+            int options = ucontext->uc_mcontext->__ss.__rdx;
+            void* rusage = (void*)ucontext->uc_mcontext->__ss.__r10;
+//#ifdef DEBUG
+            printf("ElfProcess::execSyscall: sys_wait4: upid=%d, stat_addr=%p, options=0x%x, rusage=%p\n",
+                upid,
+                stat_addr,
+                options,
+                rusage);
+//#endif
+            int res = wait4(upid, stat_addr, options, NULL);
+            int err = errno;
+            printf("ElfProcess::execSyscall: sys_wait4: res=%d, err=%d\n", res, err);
+            syscallErrnoResult(ucontext, res, res == 0, err);
+
+        } break;
+
         case 0x3f: // old uname
         {
             linux_oldutsname* utsname = (linux_oldutsname*)ucontext->uc_mcontext->__ss.__rdi;
@@ -519,6 +612,29 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             strcpy(utsname->version, "4.4.24"); // The version I've been using as a reference
             strcpy(utsname->machine, "x86_64");
             ucontext->uc_mcontext->__ss.__rax = 0;
+        } break;
+
+        case 0x48: // sys_fcntl
+        {
+            unsigned int fd = ucontext->uc_mcontext->__ss.__rdi;
+            unsigned int cmd = ucontext->uc_mcontext->__ss.__rsi;
+            unsigned long arg = ucontext->uc_mcontext->__ss.__rdx;
+//#ifdef DEBUG
+            printf("ElfProcess::execSyscall: sys_fcntl: fd=%d, cmd=0x%x, arg=0x%llx\n",
+                fd,
+                cmd,
+                arg);
+//endif
+
+            if ((cmd & 0xf) == cmd)
+            {
+                int res = fcntl(fd, cmd, arg);
+                syscallErrnoResult(ucontext, res, res == 0, errno);
+            }
+            else
+            {
+                printf("ElfProcess::execSyscall: sys_fcntl: Unsupported cmd: 0x%x\n", cmd);
+            }
         } break;
 
         case 0x4f: // sys_getcwd
@@ -571,7 +687,8 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             printf("ElfProcess::execSyscall: sys_readlink: path=%s (%p), buf=%p, bufsize=%lu\n", path, path, buf, bufsize);
 #endif
 
-            uint64_t res;
+            int res = -1;
+            int err = 0;
             if (strcmp(path, "/proc/self/exe") == 0)
             {
                 //strncpy(buf, m_line->getElfBinary()->getPath(), bufsize);
@@ -581,8 +698,9 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             else
             {
                 res = readlink(path, buf, bufsize);
+                err = errno;
             }
-            syscallErrnoResult(ucontext, res, res == 0, errno);
+            syscallErrnoResult(ucontext, res, res == 0, err);
         } break;
 
         case 0x5f: // sys_umask
@@ -617,6 +735,39 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
             ucontext->uc_mcontext->__ss.__rax = getegid();
         } break;
 
+        case 0x6d: // sys_setpgid
+        {
+            int pid = ucontext->uc_mcontext->__ss.__rdi;
+            int pgid = ucontext->uc_mcontext->__ss.__rsi;
+            printf("ElfProcess::execSyscall: sys_setpgid: pid=%d, pgid=%d\n", pid, pgid);
+            int res = setpgid(pid, pgid);
+            int err = errno;
+            syscallErrnoResult(ucontext, res, res == 0, err);
+        } break;
+
+
+        case 0x6e: // sys_getppid
+        {
+            ucontext->uc_mcontext->__ss.__rax = getppid();
+        } break;
+
+        case 0x6f: // sys_getpgrp
+        {
+            ucontext->uc_mcontext->__ss.__rax = getpgrp();
+        } break;
+
+        case 0x95: // sys_mlock
+        {
+            void* addr = (void*)(ucontext->uc_mcontext->__ss.__rdi);
+            unsigned long len = ucontext->uc_mcontext->__ss.__rsi;
+            printf("ElfProcess::execSyscall: sys_mlock: addr=%p, len=%lld\n", addr, len);
+            int res;
+            res = mlock(addr, len);
+            int err = errno;
+            printf("ElfProcess::execSyscall: sys_mlock: res=%d, err=%d\n", res, err);
+            syscallErrnoResult(ucontext, res, res == 0, err);
+        } break;
+
         case 0x9e: // sys_arch_prctl
         {
             int option = ucontext->uc_mcontext->__ss.__rdi;
@@ -635,6 +786,7 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
                 case ARCH_SET_FS:
                 {
                     m_fs = (uint64_t)addr;
+                    m_fsPtr = (uint64_t)addr;
                     printf("ElfProcess::execSyscall: sys_arch_prctl: ARCH_SET_FS=0x%llx\n", m_fs);
                     ucontext->uc_mcontext->__ss.__rax = 0;
                 } break;
@@ -649,6 +801,12 @@ bool ElfProcess::execSyscall(uint64_t syscall, ucontext_t* ucontext)
                     ucontext->uc_mcontext->__ss.__rax = 0;
                     break;
             }
+        } break;
+
+        case 0xa0: // sys_setrlimit
+        {
+            printf("ElfProcess::execSyscall: sys_setrlimit\n");
+            ucontext->uc_mcontext->__ss.__rax = 0;
         } break;
 
         case 0xba: // sys_gettid
