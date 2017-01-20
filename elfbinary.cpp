@@ -139,10 +139,22 @@ bool ElfBinary::load(const char* path)
         m_stringTable = m_image + strtabSection->sh_offset;
     }
 
-    m_symbolSection = findSection(".dynsym");
-    if (m_symbolSection == NULL)
+    if (m_header->e_type == ET_EXEC)
     {
         m_symbolSection = findSection(".symtab");
+
+        if (m_symbolSection == NULL)
+        {
+            m_symbolSection = findSection(".dynsym");
+        }
+    }
+    else
+    {
+        m_symbolSection = findSection(".dynsym");
+        if (m_symbolSection == NULL)
+        {
+            m_symbolSection = findSection(".symtab");
+        }
     }
 
     return true;
@@ -686,6 +698,7 @@ bool ElfBinary::relocateIFuncs()
 
             case R_X86_64_GLOB_DAT:
             {
+                printf("ElfBinary::relocateIFuncs: R_X86_64_GLOB_DAT: TODO\n");
                 *dest64 = 0xdeadbeef;
             } break;
 
