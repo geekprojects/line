@@ -93,17 +93,17 @@ struct link_map
 
     /* Symbol hash table.  */
     Elf_Symndx l_nbuckets;
-    Elf32_Word l_gnu_bitmask_idxbits;
-    Elf32_Word l_gnu_shift;
+    Elf64_Word l_gnu_bitmask_idxbits;
+    Elf64_Word l_gnu_shift;
     const Elf64_Addr *l_gnu_bitmask;
     union
     {
-      const Elf32_Word *l_gnu_buckets;
+      const Elf64_Word *l_gnu_buckets;
       const Elf_Symndx *l_chain;
     };
     union
     {
-      const Elf32_Word *l_gnu_chain_zero;
+      const Elf64_Word *l_gnu_chain_zero;
       const Elf_Symndx *l_buckets;
     };
     unsigned int l_direct_opencount; /* Reference count for dlopen/dlclose.  */
