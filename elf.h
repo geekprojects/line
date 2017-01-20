@@ -90,9 +90,9 @@
 
 #define STN_UNDEF		0
 
-#define ELF32_ST_BIND(I) ((I) >> 4)
-#define ELF32_ST_TYPE(I) ((I) & 0x0f)
-#define ELF32_ST_INFO(B, T) (((B) << 4) + ((T) & 0x0f))
+#define ELF64_ST_BIND(I) ((I) >> 4)
+#define ELF64_ST_TYPE(I) ((I) & 0x0f)
+#define ELF64_ST_INFO(B, T) (((B) << 4) + ((T) & 0x0f))
 
 #define STB_LOCAL		0
 #define STB_GLOBAL		1
@@ -103,6 +103,7 @@
 #define STT_FUNC		2
 #define STT_SECTION		3
 #define STT_FILE		4
+#define STT_GNU_IFUNC   10              /* Symbol is indirect code object */
 
 #define SHN_UNDEF		0
 /* 
@@ -111,21 +112,8 @@
 #define SHN_ABS			0xfff1
 #define SHN_COMMON		0xfff2
 
-#define ELF32_R_SYM(I) ((I) >> 8)
-#define ELF32_R_TYPE(I) ((u_char) (I))
-#define ELF32_R_INFO(S, T) (((S) << 8) + (u_char) (T))
-
-#define R_386_NONE		0
-#define R_386_32		1
-#define R_386_PC32		2
-#define R_386_GOT32		3
-#define R_386_PLT32		4
-#define R_386_COPY		5
-#define R_386_GLOB_DAT		6
-#define R_386_JMP_SLOT		7
-#define R_386_RELATIVE		8
-#define R_386_GOTOFF		9
-#define R_386_GOTPC		10
+#define ELF64_R_SYM(i)                  ((i) >> 32)
+#define ELF64_R_TYPE(i)                 ((i) & 0xffffffff)
 
 /* AMD x86-64 relocations.  */
 #define R_X86_64_NONE           0       /* No reloc */
@@ -161,12 +149,6 @@
 #define DT_SONAME   14
 #define DT_JMPREL       23              /* Address of PLT relocs */
 
-typedef uint32_t Elf32_Addr;
-typedef uint16_t Elf32_Half;
-typedef uint32_t Elf32_Off;
-typedef int32_t Elf32_Sword;
-typedef uint32_t Elf32_Word;
-
 typedef uint64_t   Elf64_Addr;
 typedef uint16_t   Elf64_Half;
 typedef int16_t   Elf64_SHalf;
@@ -178,23 +160,6 @@ typedef int64_t   Elf64_Sxword;
 typedef Elf64_Half Elf64_Versym;
 
 typedef uint32_t Elf_Symndx;
-
-typedef struct {
-    u_char e_ident[EI_NIDENT];
-    Elf32_Half e_type;
-    Elf32_Half e_machine;
-    Elf32_Word e_version;
-    Elf32_Addr e_entry;
-    Elf32_Off e_phoff;
-    Elf32_Off e_shoff;
-    Elf32_Word e_flags;
-    Elf32_Half e_ehsize;
-    Elf32_Half e_phentsize;
-    Elf32_Half e_phnum;
-    Elf32_Half e_shentsize;
-    Elf32_Half e_shnum;
-    Elf32_Half e_shstrndx;
-} Elf32_Ehdr;
 
 typedef struct elf64_hdr {
   unsigned char e_ident[EI_NIDENT];     /* ELF "magic number" */
@@ -213,17 +178,6 @@ typedef struct elf64_hdr {
   Elf64_Half e_shstrndx;
 } Elf64_Ehdr;
 
-typedef struct {
-    Elf32_Word p_type;
-    Elf32_Off p_offset;
-    Elf32_Addr p_vaddr;
-    Elf32_Addr p_paddr;
-    Elf32_Word p_filesz;
-    Elf32_Word p_memsz;
-    Elf32_Word p_flags;
-    Elf32_Word p_align;
-} Elf32_Phdr;
-
 typedef struct elf64_phdr {
   Elf64_Word p_type;
   Elf64_Word p_flags;
@@ -234,19 +188,6 @@ typedef struct elf64_phdr {
   Elf64_Xword p_memsz;          /* Segment size in memory */
   Elf64_Xword p_align;          /* Segment alignment, file & memory */
 } Elf64_Phdr;
-
-typedef struct {
-    Elf32_Word sh_name;
-    Elf32_Word sh_type;
-    Elf32_Word sh_flags;
-    Elf32_Addr sh_addr;
-    Elf32_Off sh_offset;
-    Elf32_Word sh_size;
-    Elf32_Word sh_link;
-    Elf32_Word sh_info;
-    Elf32_Word sh_addralign;
-    Elf32_Word sh_entsize;
-} Elf32_Shdr;
 
 typedef struct
 {
@@ -263,15 +204,6 @@ typedef struct
 } Elf64_Shdr;
 
 typedef struct {
-    Elf32_Word st_name;
-    Elf32_Addr st_value;
-    Elf32_Word st_size;
-    u_char st_info;
-    u_char st_other;
-    Elf32_Half st_shndx;
-} Elf32_Sym;
-
-typedef struct {
 	Elf64_Word	st_name;
 	unsigned char	st_info;	/* bind, type: ELF_64_ST_... */
 	unsigned char	st_other;
@@ -280,32 +212,12 @@ typedef struct {
 	Elf64_Xword	st_size;
 } Elf64_Sym;
 
-
-typedef struct {
-    Elf32_Addr r_offset;
-    Elf32_Word r_info;
-} Elf32_Rel;
-
-typedef struct {
-    Elf32_Addr r_offset;
-    Elf32_Word r_info;
-    Elf32_Sword r_addend;
-} Elf32_Rela;
-
 typedef struct
 {
   Elf64_Addr    r_offset;               /* Address */
   Elf64_Xword   r_info;                 /* Relocation type and symbol index */
   Elf64_Sxword  r_addend;               /* Addend */
 } Elf64_Rela;
-
-typedef struct {
-    Elf32_Sword d_tag;
-    union {
-        Elf32_Word d_val;
-        Elf32_Addr d_ptr;
-    } d_un;
-} Elf32_Dyn;
 
 typedef struct
 {
