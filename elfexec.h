@@ -46,6 +46,7 @@ class ElfExec : public ElfBinary
     ElfLibrary* getLibrary(std::string name);
     std::map<std::string, ElfLibrary*>& getLibraries() { return m_libraryMap; };
     void relocateLibraries();
+    void relocateLibrariesIFuncs();
 
     void entry(int argc, char** argv, char** envp);
 };

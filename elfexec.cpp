@@ -73,6 +73,19 @@ void ElfExec::relocateLibraries()
     }
 }
 
+void ElfExec::relocateLibrariesIFuncs()
+{
+    relocateIFuncs();
+
+    std::map<string, ElfLibrary*>::iterator it;
+    for (it = m_libraryMap.begin(); it != m_libraryMap.end(); it++)
+    {
+        ElfLibrary* lib = it->second;
+        lib->relocateIFuncs();
+    }
+}
+
+
 /* This calls the entry point.  The SVR4/i386 ABI (pages 3-31, 3-32)
    says that when the entry point runs, most registers' values are
    unspecified, except for:

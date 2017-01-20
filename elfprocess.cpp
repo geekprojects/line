@@ -151,6 +151,8 @@ bool ElfProcess::start(int argc, char** argv)
     // Wait for our parent to enable single step tracing etc
     m_line->waitForSingleStep();
 
+    m_elf->relocateLibrariesIFuncs();
+
     for (it = libs.begin(); it != libs.end(); it++)
     {
         if (it->first != "libpthread.so.0")

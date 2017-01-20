@@ -39,7 +39,7 @@
 
 using namespace std;
 
-#define DEBUG_RELOCATE
+#undef DEBUG_RELOCATE
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
@@ -100,7 +100,6 @@ bool ElfBinary::load(const char* path)
     fp = fopen(path, "r");
     if (fp == NULL)
     {
-        printf("ElfBinary::load: Unable to open %s\n", path);
         return false;
     }
 
@@ -128,24 +127,9 @@ bool ElfBinary::load(const char* path)
     Elf64_Shdr* sectionHeaderTable = (Elf64_Shdr*)(m_image + m_header->e_shoff);
     m_shStringTable = m_image + sectionHeaderTable[m_header->e_shstrndx - 0].sh_offset;
 
-/*
-    printf("ELF Image: %p\n", m_image);
-    printf("e_shnum=%d, shoff=%lld\n", m_header->e_shnum, m_header->e_shoff);
-    printf("e_phnum=%d, phoff=%lld\n", m_header->e_phnum, m_header->e_phoff);
-    printf("e_flags=%d\n", m_header->e_flags);
-    printf("EI_CLASS=%d\n", m_header->e_ident[EI_CLASS]);
-    printf("EI_DATA=%d\n", m_header->e_ident[EI_DATA]);
-    printf("EI_VERSION=%d\n", m_header->e_ident[EI_VERSION]);
-    printf("EI_OSABI=%d\n", m_header->e_ident[EI_OSABI]);
-    printf("String Table: e_shstrndx: %d, offset: %lld\n", m_header->e_shstrndx, sectionHeaderTable[m_header->e_shstrndx].sh_offset);
-*/
-
     Elf64_Shdr* strtabSection;
-    if (m_header->e_type == ET_EXEC)
-    {
-        strtabSection = findSection(".strtab");
-    }
-    else
+    strtabSection = findSection(".strtab");
+    if (strtabSection == NULL)
     {
         strtabSection = findSection(".dynstr");
     }
@@ -153,6 +137,12 @@ bool ElfBinary::load(const char* path)
     if (strtabSection != NULL)
     {
         m_stringTable = m_image + strtabSection->sh_offset;
+    }
+
+    m_symbolSection = findSection(".dynsym");
+    if (m_symbolSection == NULL)
+    {
+        m_symbolSection = findSection(".symtab");
     }
 
     return true;
@@ -183,44 +173,35 @@ const char* ElfBinary::getString(int name)
 
 Elf64_Sym* ElfBinary::findSymbol(const char* sym)
 {
-    Elf64_Shdr* symtabSection;
-    const char* stringTable = m_stringTable;
-    symtabSection = findSection(".symtab");
-    if (symtabSection == NULL)
+    if (m_symbolSection == NULL)
     {
-        symtabSection = findSection(".dynsym");
-        if (symtabSection != NULL)
-        {
-            Elf64_Shdr* strtabSection = findSection(".dynstr");
-            stringTable = m_image + strtabSection->sh_offset;
-        }
-    }
-
-    if (symtabSection == NULL)
-    {
-        printf("ElfBinary::findSymbol: No symtab\n");
         return NULL;
     }
 
-    Elf64_Sym* symtab = (Elf64_Sym*)(m_image + symtabSection->sh_offset);
+    Elf64_Sym* symtab = (Elf64_Sym*)(m_image + m_symbolSection->sh_offset);
 
-    int count = symtabSection->sh_size / sizeof(Elf64_Sym);
+    int len = strlen(sym);
+    int count = m_symbolSection->sh_size / sizeof(Elf64_Sym);
     int i;
     for (i = 0; i < count; i++)
     {
-        const char* name = stringTable + symtab[i].st_name;
-        char* pos = strchr(name, '@');
-        //int len;
-        if (pos != NULL)
-        {
-            //len = pos - name;
-            *pos = 0;
-        }
-        else
-        {
-            //len = strlen(name);
-        }
+        const char* name = m_stringTable + symtab[i].st_name;
 
+#if 0
+        printf("ElfBinary::findSymbol: %s: %d: st_name=0x%x (%s), info=0x%x, shndx=0x%x, st_value=0x%llx\n",
+            m_path,
+            i,
+            symtab[i].st_name,
+            name,
+            symtab[i].st_info,
+            symtab[i].st_shndx,
+            symtab[i].st_value);
+#endif
+
+        if (!strncmp(sym, name, len))
+        {
+            if (name[len] == 0 || name[len] == '@')
+            {
 /*
         printf("ElfBinary::findSymbol: %s: %d: st_name=0x%x (%s), info=0x%x, shndx=0x%x, st_value=0x%llx\n",
             m_path,
@@ -232,9 +213,8 @@ Elf64_Sym* ElfBinary::findSymbol(const char* sym)
             symtab[i].st_value);
 */
 
-        if (!strcmp(sym, name))
-        {
-            return &(symtab[i]);
+                return &(symtab[i]);
+            }
         }
     }
 
@@ -465,9 +445,9 @@ bool ElfBinary::mapDynamic()
 #endif
 
     uint64_t loadAddr = m_elfProcess->getNextLibraryLoadAddr();
-//#ifdef DEBUG
+#ifdef DEBUG
     printf("ElfBinary::mapDynamic: %s: loadAddr=0x%llx\n", m_path, loadAddr);
-//#endif
+#endif
 
     // Allocate a base location for this library now we know how big it is
     m_base = (uint64_t)mmap(
@@ -627,6 +607,7 @@ bool ElfBinary::relocate()
     const char* strtab = (const char*)(getDynValue(DT_STRTAB) + base);
 
     int i;
+    bool relocated;
     for (i = 0; i < jmprelcount; i++)
     {
         relocateRela(&(jmprel[i]), base, symtab, strtab);
@@ -643,10 +624,111 @@ bool ElfBinary::relocate()
     return true;
 }
 
-void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab, const char* strtab)
+bool ElfBinary::relocateIFuncs()
+{
+    int i;
+    uint64_t base = getBase();
+
+    Elf64_Sym* symtab = (Elf64_Sym*)(getDynValue(DT_SYMTAB) + base);
+    const char* strtab = (const char*)(getDynValue(DT_STRTAB) + base);
+
+    vector<IFuncRela>::iterator it;
+    for (it = m_ifuncRelas.begin(); it != m_ifuncRelas.end(); it++)
+    {
+        IFuncRela rela = *it;
+
+        uint64_t destaddr = rela.rela->r_offset + base;
+        uint64_t* dest64 = (uint64_t*)destaddr;
+        switch (ELF64_R_TYPE(rela.rela->r_info))
+        {
+            case R_X86_64_IRELATIVE:
+            {
+                if (rela.lib == NULL)
+                {
+                    printf("ElfBinary::relocateIFuncs: R_X86_64_IRELATIVE: lib is NULL!\n");
+                    exit(255);
+                }
+                ifunc_t ifunc = (ifunc_t)(rela.lib->getBase() + rela.rela->r_addend);
+#ifdef DEBUG_RELOCATE
+                printf(
+                    "ElfBinary::relocateRela: R_X86_64_IRELATIVE: ifunc value=0x%llx\n",
+                    ifunc);
+#endif
+
+                uint64_t value = ifunc();
+#ifdef DEBUG_RELOCATE
+                printf(
+                    "ElfBinary::relocateRela: %s: R_X86_64_IRELATIVE: ifunc result=0x%llx\n",
+                    m_path,
+                    value);
+#endif
+
+                *dest64 = value;
+ 
+            } break;
+
+            case R_X86_64_JUMP_SLOT:
+            {
+                if (rela.symbol == NULL)
+                {
+                    printf("ElfBinary::relocateIFuncs: R_X86_64_JUMP_SLOT: lib is NULL!\n");
+                    exit(255);
+                }
+                int symType = ELF64_ST_TYPE(rela.symbol->st_info);
+                if (symType != STT_GNU_IFUNC)
+                {
+                    printf("ElfBinary::relocateIFuncs: R_X86_64_JUMP_SLOT: Symbol is not STT_GNU_IFUNC\n");
+                    exit(255);
+                }
+                ifunc_t ifunc = (ifunc_t)(rela.lib->getBase() + rela.symbol->st_value);
+                *dest64 = ifunc();
+            } break;
+
+            case R_X86_64_GLOB_DAT:
+            {
+                *dest64 = 0xdeadbeef;
+            } break;
+
+            default:
+                printf("ElfBinary::relocateIFuncs: Unhandled type: %d\n", ELF64_R_TYPE(rela.rela->r_info));
+                exit(255);
+        }
+    }
+
+    return true;
+}
+
+void ElfBinary::relocateRela(
+    Elf64_Rela* rela,
+    uint64_t base,
+    Elf64_Sym* symtab,
+    const char* strtab)
 {
     int sym = rela->r_info >> 32;
     int type = rela->r_info & 0xffffffff;
+
+    bool callIFuncs = false;
+
+    bool isIFunc = (type == R_X86_64_IRELATIVE);
+    if (isIFunc && !callIFuncs)
+    {
+#ifdef DEBUG_RELOCATE
+        printf("ElfBinary::relocateRela: %s: Skipping IRELATIVE\n", m_path);
+#endif
+        IFuncRela ifr;
+        ifr.rela = rela;
+        ifr.symbol = NULL;
+        ifr.lib = this;
+        m_ifuncRelas.push_back(ifr);
+        return;
+    }
+    else if (callIFuncs && !(type == R_X86_64_IRELATIVE || type == R_X86_64_JUMP_SLOT))
+    {
+#ifdef DEBUG_RELOCATE
+        printf("ElfBinary::relocateRela: %s: Skipping non-IRELATIVE or JUMP_SLOT\n", m_path);
+#endif
+        return;
+    }
 
 #ifdef DEBUG_RELOCATE
     printf("ElfBinary::relocateRela: %s: offset=%p, info=(sym=%d, type=%d), addend=0x%llx\n",
@@ -657,16 +739,16 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
         rela->r_addend);
 #endif
 
-    ElfBinary* lib = NULL;
     Elf64_Sym* symbol = NULL;
     const char* symName = NULL;
-    if (sym > 0)
+    ElfBinary* lib = NULL;
+    if (sym != 0 && symbol == NULL)
     {
         symName = strtab + symtab[sym].st_name;
 
 #ifdef DEBUG_RELOCATE
         printf(
-            "ElfBinary::relocate: %s: Finding symbol: %s\n",
+            "ElfBinary::relocateRela: %s: Finding symbol: %s\n",
             m_path,
             symName);
 #endif
@@ -674,12 +756,12 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
         if (type == R_X86_64_GLOB_DAT)
         {
             symbol = m_exec->findSymbol(symName);
-            if (symbol != NULL && symbol->st_value != NULL)
+            if (symbol != NULL && symbol->st_value != 0)
             {
                 lib = m_exec;
 #ifdef DEBUG_RELOCATE
                 printf(
-                    "ElfBinary::relocate: %s: R_X86_64_GLOB_DAT: Found symbol in exec: 0x%llx\n",
+                    "ElfBinary::relocateRela: %s: R_X86_64_GLOB_DAT: Found symbol in exec: 0x%llx\n",
                     m_path,
                     symbol->st_value);
 #endif
@@ -688,7 +770,7 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
             {
 #ifdef DEBUG_RELOCATE
                 printf(
-                    "ElfBinary::relocate: %s: R_X86_64_GLOB_DAT: Unable to find symbol\n",
+                    "ElfBinary::relocateRela: %s: R_X86_64_GLOB_DAT: Unable to find symbol\n",
                     m_path);
 #endif
                     symbol = NULL;
@@ -697,8 +779,9 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
 
         if (lib == NULL)
         {
+            std::map<std::string, ElfLibrary*> libs = m_exec->getLibraries();
             std::map<std::string, ElfLibrary*>::iterator it;
-            for (it = m_exec->getLibraries().begin(); it != m_exec->getLibraries().end() && symbol == NULL; it++)
+            for (it = libs.begin(); it != libs.end() && symbol == NULL; it++)
             {
                 lib = it->second;
                 symbol = lib->findSymbol(symName);
@@ -715,7 +798,7 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
         {
 #ifdef DEBUG_RELOCATE
             printf(
-                "ElfBinary::relocate: %s: %s = %p\n",
+                "ElfBinary::relocateRela: %s: %s = %p\n",
                 m_path,
                 lib->getPath(),
                 symbol);
@@ -725,7 +808,7 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
         {
 #ifdef DEBUG_RELOCATE
             printf(
-                "ElfBinary::relocate: %s: Unable to find symbol %s\n",
+                "ElfBinary::relocateRela: %s: Unable to find symbol %s\n",
                 m_path,
                 symName);
 #endif
@@ -733,10 +816,64 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
     }
     else
     {
-        //if (m_header->e_type == ET_DYN)
-        //{
-            lib = this;
-        //}
+        lib = this;
+    }
+
+    uint64_t symbolValue = 0;
+    int symType = 0;
+    int symBind = 0;
+    if (symbol != NULL)
+    {
+        symType = ELF64_ST_TYPE(symbol->st_info);
+        symBind = ELF64_ST_BIND(symbol->st_info);
+    }
+
+#ifdef DEBUG_RELOCATE
+        printf(
+            "ElfBinary::relocateRela: %s: sym name=%s, sym type=%d, bind=%d\n",
+            m_path,
+            symName,
+            symType,
+            symBind);
+        printf(
+            "ElfBinary::relocateRela: %s: -> symbol=%p\n",
+            m_path,
+            symbol);
+#endif
+
+    if (symbol != NULL)
+    {
+        if (symType == STT_GNU_IFUNC)
+        {
+            if (!callIFuncs)
+            {
+#ifdef DEBUG_RELOCATE
+                printf("ElfBinary::relocateRela: %s: Skipping IFUNC\n", m_path);
+#endif
+                IFuncRela ifuncRela;
+                ifuncRela.rela = rela;
+                ifuncRela.symbol = symbol;
+                ifuncRela.lib = lib;
+                m_ifuncRelas.push_back(ifuncRela);
+                return;
+            }
+
+            ifunc_t ifunc = (ifunc_t)(lib->getBase() + symbol->st_value);
+            symbolValue = ifunc();
+            isIFunc = true;
+        }
+        else if (symbol->st_value != 0)
+        {
+            symbolValue = lib->getBase() + symbol->st_value;
+        }
+    }
+
+    if (callIFuncs && !isIFunc)
+    {
+#ifdef DEBUG_RELOCATE
+        printf("ElfBinary::relocateRela: %s: Skipping non-IFUNC\n", m_path);
+#endif
+        return;
     }
 
     uint64_t destaddr = rela->r_offset + base;
@@ -746,17 +883,15 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
     {
         case R_X86_64_COPY:
         {
-            if (symbol != NULL)
+            if (symbolValue != 0)
             {
-                const char* symName = strtab + symtab[sym].st_name;
-
 #ifdef DEBUG_RELOCATE
                 printf(
-                    "ElfBinary::relocate: R_X86_64_COPY: sym name=%s, src=0x%llx, size=%d\n", 
-                    symName,
-                    symbol->st_value + lib->getBase(), symbol->st_size);
+                    "ElfBinary::relocateRela: R_X86_64_COPY: src=0x%llx, size=%d\n", 
+                    symbolValue,
+                    symbol->st_size);
 #endif
-                memcpy((void*)destaddr, (void*)(symbol->st_value + lib->getBase()), symbol->st_size);
+                memcpy((void*)destaddr, (void*)symbolValue, symbol->st_size);
 #ifdef DEBUG_RELOCATE
                 hexdump((char*)destaddr, symbol->st_size);
 #endif
@@ -767,68 +902,46 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
         case R_X86_64_GLOB_DAT:
         case R_X86_64_JUMP_SLOT:
         {
-            int symType = symtab[sym].st_info & 0xf;
-            int symBind = symtab[sym].st_info >> 4;
-#ifdef DEBUG_RELOCATE
-            printf(
-                "ElfBinary::relocate: %s: R_X86_64_JUMP_SLOT: sym name=%s, sym type=%d, bind=%d\n",
-                m_path,
-                symName,
-                symType,
-                symBind);
-            printf(
-                "ElfBinary::relocate: %s: R_X86_64_JUMP_SLOT:  -> symbol=%p\n",
-                m_path,
-                symbol);
-#endif
-            uint64_t value = 0;
-            if (symbol != NULL)
-            {
-                if (symbol->st_value != 0)
-                {
-                    value = lib->getBase() + symbol->st_value;
-                }
-            }
-            else
+            if (symbolValue == 0)
             {
                 if (!strcmp(symName, "_rtld_global"))
                 {
-                    value = (uint64_t)(&g_rtldGlobal);
+                    symbolValue = (uint64_t)(&g_rtldGlobal);
 #ifdef DEBUG_RELOCATE
                     printf(
-                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> _rtld_global\n");
+                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> _rtld_global\n");
 #endif
                 }
                 else if (!strcmp(symName, "_rtld_global_ro"))
                 {
-                    value = (uint64_t)(&g_rtldGlobalRO);
+                    symbolValue = (uint64_t)(&g_rtldGlobalRO);
 #ifdef DEBUG_RELOCATE
                     printf(
-                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> _rtld_global_ro\n");
+                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> _rtld_global_ro\n");
 #endif
                 }
                 else if (!strcmp(symName, "__tls_get_addr"))
                 {
-                    value = (uint64_t)(tls_get_addr);
+                    symbolValue = (uint64_t)(tls_get_addr);
 #ifdef DEBUG_RELOCATE
                     printf(
-                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> __tls_get_addr\n");
+                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> __tls_get_addr\n");
 #endif
                 }
                 else if (!strcmp(symName, "_dl_find_dso_for_object"))
                 {
-                    value = (uint64_t)(dl_find_dso_for_object);
+                    symbolValue = (uint64_t)(dl_find_dso_for_object);
 #ifdef DEBUG_RELOCATE
                     printf(
-                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> _dl_find_dso_for_object\n");
+                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> _dl_find_dso_for_object\n");
 #endif
                 }
                 else if (!strcmp(symName, "__libc_enable_secure"))
                 {
-                    value = (uint64_t)(&__libc_enable_secure);
+                    symbolValue = (uint64_t)(&__libc_enable_secure);
 #ifdef DEBUG_RELOCATE
                     printf(
-                        "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> __libc_enable_secure\n");
+                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> __libc_enable_secure\n");
 #endif
                 }
 
@@ -836,16 +949,17 @@ void ElfBinary::relocateRela(Elf64_Rela* rela, uint64_t base, Elf64_Sym* symtab,
             }
             if (type == R_X86_64_64)
             {
-                value += rela->r_addend;
+                symbolValue += rela->r_addend;
             }
 #ifdef DEBUG_RELOCATE
-                printf(
-                    "ElfBinary::relocate: R_X86_64_JUMP_SLOT:  -> 0x%llx = 0x%llx\n",
-destaddr,
-                    value);
+            printf(
+                "ElfBinary::relocateRela: %s: R_X86_64_JUMP_SLOT:  -> 0x%llx = 0x%llx\n",
+                m_path,
+                destaddr,
+                symbolValue);
 #endif
 
-            *dest64 = value;
+            *dest64 = symbolValue;
         } break;
 
         case R_X86_64_RELATIVE:
@@ -853,9 +967,9 @@ destaddr,
             if (lib != NULL)
             {
                 *dest64 = (lib->getBase() + rela->r_addend);
-#ifdef DEBUG_RELOCATE_IREL
+#ifdef DEBUG_RELOCATE
                 printf(
-                    "ElfBinary::relocate: R_X86_64_IRELATIVE: 0x%llx + 0x%llx = 0x%llx\n", lib->getBase(), rela->r_addend, *dest64);
+                    "ElfBinary::relocateRela: R_X86_64_RELATIVE: 0x%llx + 0x%llx = 0x%llx\n", lib->getBase(), rela->r_addend, *dest64);
 #endif
             }
         } break;
@@ -863,54 +977,35 @@ destaddr,
         case R_X86_64_DTPMOD64:
         {
 #ifdef DEBUG
-            printf(
-                "ElfBinary::relocate: R_X86_64_DTPMOD64: 0x%llx\n", m_tlsBase);
+            printf("ElfBinary::relocateRela: R_X86_64_DTPMOD64: 0x%llx\n", m_tlsBase);
 #endif
             *dest64 = m_tlsBase;
         } break;
 
-case R_X86_64_DTPOFF64:
-{
+        case R_X86_64_DTPOFF64:
+        {
 #ifdef DEBUG
             printf(
-                "ElfBinary::relocate: R_X86_64_DTPOFF64: 0x%llx\n", m_tlsBase);
+                "ElfBinary::relocateRela: R_X86_64_DTPOFF64: 0x%llx\n", m_tlsBase);
 #endif
             *dest64 = m_tlsBase;
-} break;
+        } break;
 
         case R_X86_64_TPOFF64:
         {
-            //*dest64 = ((int)rela->r_addend - m_tlsBase) + (int64_t)m_elfProcess->getFSPtr();
             *dest64 = ((int)rela->r_addend - m_tlsBase);// + (int64_t)m_elfProcess->getFSPtr();
 #ifdef DEBUG_RELOCATE
-            printf("ElfBinary::relocate: R_X86_64_TPOFF64: %d - %d -> %d\n", rela->r_addend, m_tlsBase, *dest64);
+            printf("ElfBinary::relocateRela: R_X86_64_TPOFF64: %d - %d -> %d\n", rela->r_addend, m_tlsBase, *dest64);
 #endif
         } break;
 
         case R_X86_64_IRELATIVE:
         {
-            if (lib != NULL)
-            {
-                ifunc_t ifunc = (ifunc_t)(lib->getBase() + rela->r_addend);
-#ifdef DEBUG_RELOCATE
-                printf(
-                    "ElfBinary::relocate: R_X86_64_IRELATIVE: ifunc value=0x%llx\n",
-                    ifunc);
-#endif
-/*
-uint64_t value = ifunc();
-            printf(
-                "ElfBinary::relocate: %s: R_X86_64_IRELATIVE: ifunc result=0x%llx\n",
-                name,
-value);
-*/
-                *dest64 = (lib->getBase() + rela->r_addend);
-            }
-        } break;
+       } break;
 
         default:
-            printf("ElfBinary::relocate: Unhandled relocation type: %d\n", type);
-exit(255);
+            printf("ElfBinary::relocateRela: Unhandled relocation type: %d\n", type);
+            exit(255);
             break;
     }
 }

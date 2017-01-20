@@ -32,6 +32,14 @@ class ElfExec;
 class ElfLibrary;
 class LibraryEntry;
 class ElfProcess;
+class ElfBinary;
+
+struct IFuncRela
+{
+    Elf64_Rela* rela;
+    Elf64_Sym* symbol;
+    ElfBinary* lib;
+};
 
 class ElfBinary
 {
@@ -46,6 +54,11 @@ class ElfBinary
     char* m_stringTable;
     uint64_t m_end;
     uint64_t m_base;
+
+    std::map<std::string, Elf64_Sym*> m_symbols;
+    std::vector<IFuncRela> m_ifuncRelas;
+
+    Elf64_Shdr* m_symbolSection;
 
     int m_tlsBase;
     int m_tlsSize;
@@ -80,6 +93,7 @@ class ElfBinary
 
     bool loadLibraries();
     virtual bool relocate();
+    bool relocateIFuncs();
 
     void setElfProcess(ElfProcess* elfProcess) { m_elfProcess = elfProcess; }
     char* getPath() { return m_path; }
