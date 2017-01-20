@@ -22,9 +22,19 @@
 #define __ELFPROCESS_H_
 
 #include <signal.h>
+#include <dirent.h>
 
 #include "line.h"
 #include "elfexec.h"
+#include "filesystem.h"
+
+struct LinuxSocket
+{
+    int fd;
+    int family;
+    int type;
+    int protocol;
+};
 
 class ElfProcess
 {
@@ -38,6 +48,10 @@ class ElfProcess
     uint64_t m_libraryLoadAddr;
 
     uint8_t* m_rip;
+
+    FileSystem m_fileSystem;
+    std::map<int, LinuxSocket*> m_sockets;
+    std::map<int, DIR*> m_dirs;
 
     static void signalHandler(int sig, siginfo_t* info, void* contextptr);
     void trap(siginfo_t* info, ucontext_t* ucontext);
