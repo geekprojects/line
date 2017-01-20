@@ -34,11 +34,17 @@ int main(int argc, char** argv)
     int i;
     for (i = 0; i < argc - 1; i++)
     {
-        execargv[i] = argv[i + 1];
+        execargv[i] = strdup(argv[i + 1]);
     }
 
     Line line;
-    line.open(argv[1]);
+    bool res;
+    res = line.open(argv[1]);
+    if (!res)
+    {
+        return 1;
+    }
+
     line.execute(argc - 1, execargv);
     return 0;
 }
