@@ -43,6 +43,8 @@ using namespace std;
 
 static ElfProcess* g_elfProcess = NULL;
 
+extern char **environ;
+
 uint64_t tls_get_addr()
 {
     return g_elfProcess->getFSPtr();
@@ -74,10 +76,28 @@ bool ElfProcess::start(int argc, char** argv)
     sigaction(SIGSEGV, &act, 0);
 
     // Set the environment
-    char** environ = new char*[100];
-    environ[0] = (char*)"HELLO=WORLD";
-    environ[1] = (char*)"LC_CTYPE=C";
-    environ[2] = NULL;
+    int envsize = 0;
+    while (environ[envsize] != NULL)
+    {
+        envsize++;
+    }
+    char** linux_environ = new char*[envsize + 2];
+
+    int i;
+    for (i = 0; i < envsize; i++)
+    {
+        const char* env = environ[i];
+        if (!strncmp("PATH=", env, 5))
+        {
+            linux_environ[i] = (char*)"PATH=/bin:/usr/bin";
+        }
+        else
+        {
+            linux_environ[i] = environ[i];
+        }
+    }
+    linux_environ[envsize] = (char*)"LINUX_ON_MAC=1";
+    linux_environ[envsize + 1] = NULL;
 
     // Set up brk pointer
     m_brk = m_elf->getEnd();
@@ -157,7 +177,7 @@ bool ElfProcess::start(int argc, char** argv)
     {
         if (it->first != "libpthread.so.0")
         {
-            it->second->entry(argc, argv, environ);
+            it->second->entry(argc, argv, linux_environ);
         }
     }
 
@@ -228,27 +248,6 @@ void ElfProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 
 void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 {
-    //x86_thread_state64_t*
-#if 0
-    if ((uint64_t)info->si_addr < 0x7fff90000000ull)
-    {
-        //printf("child_signal_handler: sig=%d, errno=%d, address=%p\n", sig, info->si_errno, info->si_addr);
-        //printf("child_signal_handler:  -> RAX=0x%llx\n", ucontext->uc_mcontext->__ss.__rax);
-    }
-
-    if ((uint64_t)info->si_addr >= 0x433300 && (uint64_t)info->si_addr < 0x43350f)
-    {
-        printregs(ucontext);
-    }
-#endif
-
-#if 0
-    if ((uint64_t)info->si_addr == 0x40dd52)
-    {
-        printregs(ucontext);
-    }
-#endif
-
     while (true)
     {
         uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip);
@@ -261,11 +260,11 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
             exit(1);
         }
         else if (
-            ((uint64_t)addr >= 0x7bf00000 && (uint64_t)addr <= 0x7bffffff) ||
+            ((uint64_t)addr >= IMAGE_BASE && (uint64_t)addr <= (IMAGE_BASE + 0xffffff)) ||
             ((uint64_t)addr >= 0x7fffc0000000))
         {
             // Line binary or kernel
-#ifdef DEBUG
+#ifdef DEBUG_OSX
             printf("ElfProcess::trap: %p: line\n", addr);
 #endif
             return;
