@@ -6,7 +6,6 @@
 class FileSystem
 {
  private:
-    const char* m_root;
 
  public:
     FileSystem();

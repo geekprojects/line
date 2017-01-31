@@ -278,7 +278,7 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
             int syscall = ucontext->uc_mcontext->__ss.__rax;
 
 #ifdef DEBUG
-            printf("ElfProcess: trap: 0x%x: SYSCALL 0x%x\n", info->si_addr, syscall);
+            printf("ElfProcess: trap: %p: SYSCALL 0x%x\n", info->si_addr, syscall);
 #endif
 
             execSyscall(syscall, ucontext);

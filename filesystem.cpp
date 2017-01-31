@@ -96,18 +96,24 @@ char* FileSystem::path2osx(const char* path)
         int i;
         for (i = 0; i < (sizeof(g_fsMounts) / sizeof(FileSystemMount)); i++)
         {
+#ifdef DEBUG
             printf("FileSystem::path2osx: %d: %s -> %s\n",
                 i,
                 g_fsMounts[i].path,
                 g_fsMounts[i].dest);
+#endif
 
             int pathlen = strlen(g_fsMounts[i].path);
 
             if (!strncmp(path, g_fsMounts[i].path, pathlen))
             {
+#ifdef DEBUG
                 printf("FileSystem::path2osx: -> Matched\n");
+#endif
                 string osx = string(g_fsMounts[i].dest) + "/" + pathstr.substr(pathlen);
+#ifdef DEBUG
                 printf("FileSystem::path2osx: -> osx path=%s\n", osx.c_str());
+#endif
                 return strdup(osx.c_str());
             }
         }
