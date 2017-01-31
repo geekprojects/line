@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 
 #include <arpa/inet.h>
 
@@ -39,7 +40,11 @@
 
 using namespace std;
 
-#undef DEBUG_RELOCATE
+#define VDSO_MASK 0xffffffffff000000
+#define VDSO_TIME 0xffffffffff600400
+#define VDSO_GETTIMEOFDAY 0xffffffffff600000
+
+//#define DEBUG_RELOCATE
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
@@ -61,13 +66,56 @@ void* dl_find_dso_for_object(void* addr)
     return NULL;
 }
 
+void* dl_open(const char *file, int mode, const void *caller_dlopen, Lmid_t nsid, int argc, char *argv[], char *env[])
+{
+    printf("dl_open: file=%s\n", file);
+    return (void*)0;
+}
+
+int dl_catch_error (const char **objname, const char **errstring,
+                            bool *mallocedp, void (*operate) (void *),
+                            void *args)
+{
+    printf("dl_catch_error: objname=%p, errstring=%p\n", objname, errstring);
+    (*operate)(args);
+    return 0;
+}
+
+uint64_t _dl_lookup_symbol_x(
+    const char *,
+    struct link_map *,
+    const Elf64_Sym **,
+    struct r_scope_elem *[],
+    const struct r_found_version *,
+    int, int,
+    struct link_map *)
+{
+    printf("_dl_lookup_symbol_x: Here!\n");
+    return 0;
+}
+
+uint64_t vdso_time(time_t* t)
+{
+    return time(t);
+}
+
+uint64_t vdso_gettimeofday(struct timeval *tv, struct timezone *tz)
+{
+    return gettimeofday(tv, tz);
+}
+
 rtld_global_ro g_rtldGlobalRO =
 {
-    ._dl_pagesize = 4096
+    ._dl_debug_mask = 0x0,
+    ._dl_pagesize = 4096,
+    ._dl_catch_error = dl_catch_error,
+    ._dl_lookup_symbol_x = _dl_lookup_symbol_x,
+    ._dl_open = dl_open,
 };
 
 rtld_global g_rtldGlobal =
 {
+    ._dl_nns = 1,
     ._dl_error_catch_tsd = (void**(*)())0xbeefface,
     ._dl_rtld_lock_recursive = rtld_lock_recursive,
     ._dl_rtld_unlock_recursive = rtld_unlock_recursive
@@ -88,6 +136,27 @@ ElfBinary::ElfBinary()
     m_exec = NULL;
     m_base = 0x0;
     m_tlsSize = 0;
+
+#if 0
+    printf("ElfBinary::ElfBinary: g_rtldGlobal:\n");
+    printf("ElfBinary::ElfBinary:   _dl_load_lock=0x%lx\n", offsetof(rtld_global, _dl_load_lock));
+    printf("ElfBinary::ElfBinary:   _dl_rtld_lock_recursive=0x%lx\n", offsetof(rtld_global, _dl_rtld_lock_recursive));
+    printf("ElfBinary::ElfBinary:   _dl_rtld_unlock_recursive=0x%lx\n", offsetof(rtld_global, _dl_rtld_unlock_recursive));
+
+    printf("ElfBinary::ElfBinary: g_rtldGlobalRO:\n");
+    printf("ElfBinary::ElfBinary:   _dl_fpu_control=0x%lx\n", offsetof(rtld_global_ro, _dl_fpu_control));
+    //printf("ElfBinary::ElfBinary: _dl_auxv=0x%lx\n", offsetof(rtld_global_ro, _dl_auxv));
+    printf("ElfBinary::ElfBinary:   _dl_inhibit_rpath=0x%lx\n", offsetof(rtld_global_ro, _dl_inhibit_rpath));
+    printf("ElfBinary::ElfBinary:   _dl_use_load_bias=0x%lx\n", offsetof(rtld_global_ro, _dl_use_load_bias));
+    printf("ElfBinary::ElfBinary:   _dl_sysinfo=0x%lx\n", offsetof(rtld_global_ro, _dl_sysinfo));
+    printf("ElfBinary::ElfBinary:   _dl_hwcap2=0x%lx\n", offsetof(rtld_global_ro, _dl_hwcap2));
+    printf("ElfBinary::ElfBinary:   _dl_debug_printf=0x%lx\n", offsetof(rtld_global_ro, _dl_debug_printf));
+    printf("ElfBinary::ElfBinary:   _dl_catch_error=0x%lx\n", offsetof(rtld_global_ro, _dl_catch_error));
+    printf("ElfBinary::ElfBinary:   _dl_signal_error=0x%lx\n", offsetof(rtld_global_ro, _dl_signal_error));
+    printf("ElfBinary::ElfBinary:   _dl_mcount=0x%lx\n", offsetof(rtld_global_ro, _dl_mcount));
+    printf("ElfBinary::ElfBinary:   _dl_lookup_symbol_x=0x%lx\n", offsetof(rtld_global_ro, _dl_lookup_symbol_x));
+    printf("ElfBinary::ElfBinary:   _dl_open=0x%lx\n", offsetof(rtld_global_ro, _dl_open));
+#endif
 }
 
 ElfBinary::~ElfBinary()
@@ -382,7 +451,7 @@ bool ElfBinary::mapStatic()
             }
 
 #ifdef DEBUG
-            printf("ElfBinary::mapStatic: Program Header: %d: memcpy(0x%llx-0x%llx, 0x%llx-0x%llx, %d)\n",
+            printf("ElfBinary::mapStatic: Program Header: %d: memcpy(%p-0x%llx, %p-%p, %lld)\n",
                 i,
                 (void*)((uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr)),
                 (uint64_t)maddr + ELF_PAGEOFFSET(phdr[i].p_vaddr) + phdr[i].p_filesz,
@@ -479,12 +548,11 @@ bool ElfBinary::mapDynamic()
     {
         if (phdr[i].p_type == PT_LOAD)
         {
-
             uint64_t start = phdr[i].p_vaddr + loadMin;
-            size_t len = ALIGN(phdr[i].p_memsz + ELF_PAGEOFFSET(phdr->p_vaddr), 4096);
             start += m_base;
 
 #ifdef DEBUG
+            size_t len = ALIGN(phdr[i].p_memsz + ELF_PAGEOFFSET(phdr->p_vaddr), 4096);
             printf(
                 "ElfBinary::mapDynamic: %s: Specified: 0x%llx-0x%llx, Remapped: 0x%llx, 0x%llx, Copying to: 0x%llx, 0x%llx\n",
                 m_path,
@@ -525,10 +593,10 @@ bool ElfBinary::loadLibraries()
     for (it = m_needed.begin(); it != m_needed.end(); it++)
     {
         uint64_t needed = *it;
-        const char* nameChar = strtab + needed;
 
 #ifdef DEBUG
-        printf("ElfBinary::loadLibraries: %s: needed=%lld: 0x%llx\n", m_path, needed, nameChar);
+        const char* nameChar = strtab + needed;
+        printf("ElfBinary::loadLibraries: %s: needed=%lld: %p\n", m_path, needed, nameChar);
 #endif
 
         string name = string(strtab + needed);
@@ -619,7 +687,6 @@ bool ElfBinary::relocate()
     const char* strtab = (const char*)(getDynValue(DT_STRTAB) + base);
 
     int i;
-    bool relocated;
     for (i = 0; i < jmprelcount; i++)
     {
         relocateRela(&(jmprel[i]), base, symtab, strtab);
@@ -638,11 +705,7 @@ bool ElfBinary::relocate()
 
 bool ElfBinary::relocateIFuncs()
 {
-    int i;
     uint64_t base = getBase();
-
-    Elf64_Sym* symtab = (Elf64_Sym*)(getDynValue(DT_SYMTAB) + base);
-    const char* strtab = (const char*)(getDynValue(DT_STRTAB) + base);
 
     vector<IFuncRela>::iterator it;
     for (it = m_ifuncRelas.begin(); it != m_ifuncRelas.end(); it++)
@@ -651,6 +714,7 @@ bool ElfBinary::relocateIFuncs()
 
         uint64_t destaddr = rela.rela->r_offset + base;
         uint64_t* dest64 = (uint64_t*)destaddr;
+uint64_t value = 0;
         switch (ELF64_R_TYPE(rela.rela->r_info))
         {
             case R_X86_64_IRELATIVE:
@@ -663,11 +727,11 @@ bool ElfBinary::relocateIFuncs()
                 ifunc_t ifunc = (ifunc_t)(rela.lib->getBase() + rela.rela->r_addend);
 #ifdef DEBUG_RELOCATE
                 printf(
-                    "ElfBinary::relocateRela: R_X86_64_IRELATIVE: ifunc value=0x%llx\n",
+                    "ElfBinary::relocateRela: R_X86_64_IRELATIVE: ifunc value=%p\n",
                     ifunc);
 #endif
 
-                uint64_t value = ifunc();
+                value = ifunc();
 #ifdef DEBUG_RELOCATE
                 printf(
                     "ElfBinary::relocateRela: %s: R_X86_64_IRELATIVE: ifunc result=0x%llx\n",
@@ -675,11 +739,11 @@ bool ElfBinary::relocateIFuncs()
                     value);
 #endif
 
-                *dest64 = value;
  
             } break;
 
             case R_X86_64_JUMP_SLOT:
+            case R_X86_64_GLOB_DAT:
             {
                 if (rela.symbol == NULL)
                 {
@@ -693,19 +757,43 @@ bool ElfBinary::relocateIFuncs()
                     exit(255);
                 }
                 ifunc_t ifunc = (ifunc_t)(rela.lib->getBase() + rela.symbol->st_value);
-                *dest64 = ifunc();
-            } break;
-
-            case R_X86_64_GLOB_DAT:
-            {
-                printf("ElfBinary::relocateIFuncs: R_X86_64_GLOB_DAT: TODO\n");
-                *dest64 = 0xdeadbeef;
+                value = ifunc();
+#ifdef DEBUG_RELOCATE
+                printf(
+                    "ElfBinary::relocateIFuncs: %s: R_X86_64_JUMP_SLOT: 0x%llx = 0x%llx\n",
+                    m_path,
+destaddr,
+                    value);
+#endif
             } break;
 
             default:
-                printf("ElfBinary::relocateIFuncs: Unhandled type: %d\n", ELF64_R_TYPE(rela.rela->r_info));
+                printf("ElfBinary::relocateIFuncs: Unhandled type: %lld\n", ELF64_R_TYPE(rela.rela->r_info));
                 exit(255);
         }
+
+        // Handle vsyscall values
+        if ((value & VDSO_MASK) == VDSO_MASK)
+        {
+#ifdef DEBUG_RELOCATE
+            printf("ElfBinary::relocateIFuncs: VDSO value: 0x%llx\n", value);
+#endif
+            if (value == VDSO_TIME)
+            {
+                value = (uint64_t)(&vdso_time);
+            }
+            else if (value == VDSO_GETTIMEOFDAY)
+            {
+                value = (uint64_t)(&vdso_time);
+            }
+            else
+            {
+                printf("ElfBinary::relocateIFuncs: Unhandled VDSO value: 0x%llx\n", value);
+                exit(255);
+            }
+        }
+
+        *dest64 = value;
     }
 
     return true;
@@ -744,7 +832,7 @@ void ElfBinary::relocateRela(
     }
 
 #ifdef DEBUG_RELOCATE
-    printf("ElfBinary::relocateRela: %s: offset=%p, info=(sym=%d, type=%d), addend=0x%llx\n",
+    printf("ElfBinary::relocateRela: %s: offset=0x%llx, info=(sym=%d, type=%d), addend=0x%llx\n",
         m_path,
         rela->r_offset,
         sym,
@@ -891,7 +979,6 @@ void ElfBinary::relocateRela(
 
     uint64_t destaddr = rela->r_offset + base;
     uint64_t* dest64 = (uint64_t*)destaddr;
-    uint32_t* dest32 = (uint32_t*)destaddr;
     switch (type)
     {
         case R_X86_64_COPY:
@@ -900,7 +987,7 @@ void ElfBinary::relocateRela(
             {
 #ifdef DEBUG_RELOCATE
                 printf(
-                    "ElfBinary::relocateRela: R_X86_64_COPY: src=0x%llx, size=%d\n", 
+                    "ElfBinary::relocateRela: R_X86_64_COPY: src=0x%llx, size=%lld\n", 
                     symbolValue,
                     symbol->st_size);
 #endif
@@ -990,7 +1077,7 @@ void ElfBinary::relocateRela(
         case R_X86_64_DTPMOD64:
         {
 #ifdef DEBUG
-            printf("ElfBinary::relocateRela: R_X86_64_DTPMOD64: 0x%llx\n", m_tlsBase);
+            printf("ElfBinary::relocateRela: R_X86_64_DTPMOD64: 0x%x\n", m_tlsBase);
 #endif
             *dest64 = m_tlsBase;
         } break;
@@ -999,7 +1086,7 @@ void ElfBinary::relocateRela(
         {
 #ifdef DEBUG
             printf(
-                "ElfBinary::relocateRela: R_X86_64_DTPOFF64: 0x%llx\n", m_tlsBase);
+                "ElfBinary::relocateRela: R_X86_64_DTPOFF64: 0x%x\n", m_tlsBase);
 #endif
             *dest64 = m_tlsBase;
         } break;
@@ -1008,7 +1095,7 @@ void ElfBinary::relocateRela(
         {
             *dest64 = ((int)rela->r_addend - m_tlsBase);// + (int64_t)m_elfProcess->getFSPtr();
 #ifdef DEBUG_RELOCATE
-            printf("ElfBinary::relocateRela: R_X86_64_TPOFF64: %d - %d -> %d\n", rela->r_addend, m_tlsBase, *dest64);
+            printf("ElfBinary::relocateRela: R_X86_64_TPOFF64: %lld - %d -> %lld\n", rela->r_addend, m_tlsBase, *dest64);
 #endif
         } break;
 
@@ -1033,7 +1120,7 @@ void ElfBinary::initTLS(void* tls)
         if (phdr[i].p_type == PT_TLS)
         {
 #ifdef DEBUG
-            printf("ElfBinary::initTLS: Copying 0x%llx -> 0x%llx\n", phdr[i].p_vaddr + getBase(), tls);
+            printf("ElfBinary::initTLS: Copying 0x%llx -> %p\n", phdr[i].p_vaddr + getBase(), tls);
 #endif
             memcpy(
                 tls,

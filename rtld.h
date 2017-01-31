@@ -6,12 +6,6 @@
 typedef long int Lmid_t;
 typedef unsigned long long int hp_timing_t;
 
-struct r_file_id
-{
-    dev_t dev;
-    ino64_t ino;
-};
-
 #define __SIZEOF_PTHREAD_MUTEX_T 40
 struct linux_pthread_mutex_t
 {
@@ -34,7 +28,7 @@ struct r_scope_elem
     struct link_map **r_list;
     /* Number of entries in the scope.  */
     unsigned int r_nlist;
-};
+} __attribute__((__packed__));
 
 struct r_search_path_elem;
 
@@ -52,7 +46,7 @@ struct link_map_machine
 };
 
 
-#define  	DT_NUM 		34
+#define DT_NUM 		34
 #define DT_THISPROCNUM    0
 #define DT_VERSIONTAGNUM 16
 #define DT_EXTRANUM    3
@@ -66,6 +60,7 @@ struct link_map
     char *l_name;               /* Absolute file name object was found in.  */
     Elf64_Dyn* l_ld;            /* Dynamic section of the shared object.  */
     struct link_map *l_next, *l_prev; /* Chain of loaded objects.  */
+
     /* This is an element which is only ever different from a pointer to
        the very same copy of this type for ld.so when it is used in more
        than one namespace.  */
@@ -181,7 +176,8 @@ struct link_map
 
     /* This information is kept to check for sure whether a shared
        object is the same as one already loaded.  */
-    struct r_file_id l_file_id;
+    dev_t dev;
+    ino64_t ino;
 
     /* Collected information about own RUNPATH directories.  */
     struct r_search_path_struct l_runpath_dirs;
@@ -251,6 +247,7 @@ struct link_map
        structure.  Never add something after it.  */
     struct auditstate l_audit[0];
 };
+
 struct r_debug
   {
     int r_version;              /* Version number for this protocol.  */
@@ -276,7 +273,7 @@ struct r_debug
   };
 
 struct link_namespaces
-  {
+{
     /* A pointer to the map for the main map.  */
     struct link_map *_ns_loaded;
     /* Number of object in the _dl_loaded list.  */
@@ -342,6 +339,7 @@ struct rtld_global
 
   /* List of search directories.  */
   struct r_search_path_elem *_dl_all_dirs;
+uint64_t pad;
 
 // MAYBE?
   void **(*_dl_error_catch_tsd) (void) __attribute__ ((const));
@@ -369,15 +367,49 @@ struct rtld_global
     size_t _dl_tls_max_dtv_idx;
 };
 
+enum
+  {
+    COMMON_CPUID_INDEX_1 = 0,
+    COMMON_CPUID_INDEX_7,
+    COMMON_CPUID_INDEX_80000001,        /* for AMD */
+    /* Keep the following line at the end.  */
+    COMMON_CPUID_INDEX_MAX
+  };
+
+/* The current maximum size of the feature integer bit array.  */
+#define FEATURE_INDEX_MAX 1
+
+struct cpu_features
+{
+  enum cpu_features_kind
+    {
+      arch_kind_unknown = 0,
+      arch_kind_intel,
+      arch_kind_amd,
+      arch_kind_other
+    } kind;
+  int max_cpuid;
+  struct cpuid_registers
+  {
+    unsigned int eax;
+    unsigned int ebx;
+    unsigned int ecx;
+    unsigned int edx;
+  } cpuid[COMMON_CPUID_INDEX_MAX];
+  unsigned int family;
+  unsigned int model;
+  unsigned int feature[FEATURE_INDEX_MAX];
+} __attribute__((__packed__));
+
 struct rtld_global_ro
 {
-    int _dl_debug_mask;
-    unsigned int _dl_osversion;
-    const char *_dl_platform;
-    size_t _dl_platformlen;
-    size_t _dl_pagesize;
-    int _dl_inhibit_cache;
-    struct r_scope_elem _dl_initial_searchlist;
+    int _dl_debug_mask;                          // 4 - 0
+    unsigned int _dl_osversion;                  // 4 - 4
+    const char *_dl_platform;                    // 8 - 8
+    size_t _dl_platformlen;                      // 8 - 10
+    size_t _dl_pagesize;                         // 8 - 18
+    int _dl_inhibit_cache;                       // 4 - 20
+    struct r_scope_elem _dl_initial_searchlist;  
     int _dl_clktck;
     int _dl_verbose;
     int _dl_debug_fd;
@@ -388,6 +420,42 @@ struct rtld_global_ro
     int _dl_correct_cache_id;
     uint64_t _dl_hwcap;
     uint64_t _dl_hwcap_mask;
-};
+    void* _dl_auxv;
+    //cpu_features _dl_cpu_features;
+    //const char _dl_x86_cap_flags[32][8];
+    //const char _dl_x86_platforms[4][5];
+    const char *_dl_inhibit_rpath;
+    const char *_dl_origin_path;
+    uint64_t _dl_use_load_bias;
+    char* _dl_profile;
+    const char *_dl_profile_output;
+    const char *_dl_trace_prelink;
+    struct link_map *_dl_trace_prelink_map;
+    struct r_search_path_elem *_dl_init_all_dirs;
+    hp_timing_t _dl_hp_timing_overhead;
+    uintptr_t _dl_sysinfo;
+
+    const void* _dl_sysinfo_dso;
+    struct link_map *_dl_sysinfo_map;
+
+    uint64_t _dl_hwcap2;
+    void (*_dl_debug_printf) (const char *, ...) __attribute__ ((__format__ (__printf__, 1, 2)));
+    int (*_dl_catch_error) (const char **, const char **, bool *, void (*) (void *), void *);
+    void (*_dl_signal_error) (int, const char *, const char *, const char *);
+    void (*_dl_mcount) (Elf64_Addr frompc, Elf64_Addr selfpc);
+    uint64_t (*_dl_lookup_symbol_x) (
+        const char *,
+        struct link_map *,
+        const Elf64_Sym **,
+        struct r_scope_elem *[],
+        const struct r_found_version *,
+        int, int,
+        struct link_map *);
+    int (*_dl_check_caller) (const void *, int allowmask);
+    void *(*_dl_open) (const char *file, int mode, const void *caller_dlopen,
+                     Lmid_t nsid, int argc, char *argv[], char *env[]);
+    void (*_dl_close) (void *map);
+    void *(*_dl_tls_get_addr_soft) (struct link_map *);
+} __attribute__((__packed__));
 
 #endif
