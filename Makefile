@@ -3,8 +3,8 @@ TGT=line
 
 IMAGE_BASE=0xff000000
 
-CXXFLAGS=
-#CXXFLAGS=-DDEBUG
+CXXFLAGS=-O3
+#CXXFLAGS=-DDEBUG -O2
 
 SRCS=main.cpp line.cpp elfprocess.cpp syscall.cpp fsinstruction.cpp elfbinary.cpp elfexec.cpp elflibrary.cpp utils.cpp filesystem.cpp
 OBJS=$(SRCS:.cpp=.o)
@@ -18,7 +18,7 @@ clean:
 	rm -rf $(OBJS) $(TGT)
 
 .cpp.o:
-	gcc -c -O0 $(CXXFLAGS) -DIMAGE_BASE=$(IMAGE_BASE) $<
+	gcc -c -Wall -Werror $(CXXFLAGS) -DIMAGE_BASE=$(IMAGE_BASE) $<
 
 
 
