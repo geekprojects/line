@@ -61,7 +61,7 @@ class ElfProcess
     bool execSyscall(uint64_t syscall, ucontext_t* ucontext);
     bool execFSInstruction(uint8_t* rip, ucontext_t* ucontext);
 
-    void syscallErrnoResult(ucontext_t* ucontext, int res, bool success, int err);
+    void syscallErrnoResult(ucontext_t* ucontext, uint64_t res, bool success, int err);
 
     uint8_t fetch8();
     uint32_t fetch32();
