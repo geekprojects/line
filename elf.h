@@ -148,6 +148,10 @@
 #define DT_FINI     13
 #define DT_SONAME   14
 #define DT_JMPREL       23              /* Address of PLT relocs */
+#define DT_INIT_ARRAY   25              /* Array with addresses of init fct */
+#define DT_FINI_ARRAY   26              /* Array with addresses of fini fct */
+#define DT_INIT_ARRAYSZ 27              /* Size in bytes of DT_INIT_ARRAY */
+#define DT_FINI_ARRAYSZ 28              /* Size in bytes of DT_FINI_ARRAY */
 
 typedef uint64_t   Elf64_Addr;
 typedef uint16_t   Elf64_Half;
