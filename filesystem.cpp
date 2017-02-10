@@ -56,7 +56,7 @@ int FileSystem::access(const char* path, int mode)
         return -1;
     }
 
-    int res = ::access(path, mode);
+    int res = ::access(osxPath, mode);
     int err = errno;
     free(osxPath);
     errno = err;
@@ -76,6 +76,49 @@ int FileSystem::chdir(const char* path)
     int res = ::chdir(osxPath);
     int err = errno;
     free(osxPath);
+    errno = err;
+
+    return res;
+}
+
+int FileSystem::unlink(const char* path)
+{
+    char* osxPath = path2osx(path);
+    if (osxPath == NULL)
+    {
+        errno = ENOENT;
+        return -1;
+    }
+
+    int res = ::unlink(osxPath);
+    int err = errno;
+    free(osxPath);
+    errno = err;
+
+    return res;
+}
+
+int FileSystem::rename(const char* oldname, const char* newname)
+{
+    char* osxOldName = path2osx(oldname);
+    if (osxOldName == NULL)
+    {
+        errno = ENOENT;
+        return -1;
+    }
+
+    char* osxNewName = path2osx(newname);
+    if (osxNewName == NULL)
+    {
+        free(osxOldName);
+        errno = ENOENT;
+        return -1;
+    }
+
+    int res = ::rename(osxOldName, osxNewName);
+    int err = errno;
+    free(osxOldName);
+    free(osxNewName);
     errno = err;
 
     return res;
