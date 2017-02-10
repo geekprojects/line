@@ -36,6 +36,7 @@
 #include "elfprocess.h"
 #include "elflibrary.h"
 #include "utils.h"
+#include "tls.h"
 
 //#define DEBUG
 
@@ -103,7 +104,7 @@ bool ElfProcess::start(int argc, char** argv)
     m_brk = m_elf->getEnd();
 
     // Set up TLS
-    int tlssize = m_elf->getTLSSize() + 8;
+    int tlssize = m_elf->getTLSSize() + sizeof(struct pthread);
     map<string, ElfLibrary*> libs = m_elf->getLibraries();
     map<string, ElfLibrary*>::iterator it;
     for (it = libs.begin(); it != libs.end(); it++)
@@ -158,6 +159,17 @@ bool ElfProcess::start(int argc, char** argv)
 #endif
         it->second->initTLS(initpos);
     }
+
+    // Set up the initial pthread
+    struct pthread* pthread = (struct pthread*)m_fsPtr;
+    *((uint64_t*)(m_fsPtr + 0x10)) = (uint64_t)pthread;
+    pthread->pid = getpid();
+    uint64_t tid;
+    pthread_threadid_np(NULL, &tid);
+    pthread->tid = tid;
+
+    printf("ElfProcess::start: pthread pid=%p\n", &(pthread->pid));
+    printf("ElfProcess::start: pthread tid=%p\n", &(pthread->tid));
 
     writeFS64(0, m_fsPtr);
 
@@ -235,8 +247,8 @@ void ElfProcess::printregs(ucontext_t* ucontext)
 
 void ElfProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 {
-    printf(
-        "ElfProcess::error: sig=%d, errno=%d, address=%p\n",
+    log(
+        "error: sig=%d, errno=%d, address=%p\n",
         sig,
         info->si_errno,
         info->si_addr);
@@ -255,7 +267,7 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         // Save ourselves a segfault
         if (addr == 0)
         {
-            printf("ElfProcess::trap: addr=%p\n", addr);
+            log("trap: addr=%p", addr);
             printregs(ucontext);
             exit(1);
         }
@@ -271,15 +283,15 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         }
 
 #ifdef DEBUG
-        printf("ElfProcess::trap: %p: 0x%x 0x%x 0x%x\n", addr, *addr, *(addr + 1), *(addr + 2));
+        log("trap: %p: 0x%x 0x%x 0x%x", addr, *addr, *(addr + 1), *(addr + 2));
 #endif
         if (*addr == 0x0f && *(addr + 1) == 0x05)
         {
             int syscall = ucontext->uc_mcontext->__ss.__rax;
 
-#ifdef DEBUG
-            printf("ElfProcess: trap: %p: SYSCALL 0x%x\n", info->si_addr, syscall);
-#endif
+//#ifdef DEBUG
+            log("trap: %p: SYSCALL 0x%x", info->si_addr, syscall);
+//#endif
 
             execSyscall(syscall, ucontext);
 
@@ -297,5 +309,24 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 
         // Better check that we don't need to handle the next instruction too
     }
+}
+
+void ElfProcess::log(const char* format, ...)
+{
+    va_list va;
+    va_start(va, format);
+
+    char buf[4096];
+    vsnprintf(buf, 4096, format, va);
+    char timeStr[256];
+    time_t t;
+    struct tm *tm;
+    t = time(NULL);
+    tm = localtime(&t);
+    strftime(timeStr, 256, "%Y/%m/%d %H:%M:%S", tm);
+
+    pid_t pid = getpid();
+
+    printf("%s: %d: %s\n", timeStr, pid, buf);
 }
 
