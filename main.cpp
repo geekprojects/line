@@ -19,8 +19,10 @@
  */
 
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "line.h"
+#include "filesystem.h"
 
 int main(int argc, char** argv)
 {
@@ -37,11 +39,31 @@ int main(int argc, char** argv)
         execargv[i] = strdup(argv[i + 1]);
     }
 
+    // First see if we can find the executable in the Linux vfs
+    FileSystem fs;
+    char* linuxExec = fs.path2osx(argv[1]);
+    int a;
+    a = access(linuxExec, F_OK | X_OK);
+    if (a != 0)
+    {
+        // Nope, try the normal file system
+        free(linuxExec);
+        linuxExec = argv[1];
+        a = access(linuxExec, F_OK | X_OK);
+    }
+
+    if (a != 0)
+    {
+        printf("%s: unable to find executable\n", argv[0]);
+        exit(1);
+    }
+
     Line line;
     bool res;
-    res = line.open(argv[1]);
+    res = line.open(linuxExec);
     if (!res)
     {
+        printf("%s: Unable to open %s\n", argv[0], argv[1]);
         return 1;
     }
 
