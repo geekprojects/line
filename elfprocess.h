@@ -26,15 +26,9 @@
 
 #include "line.h"
 #include "elfexec.h"
-#include "filesystem.h"
+#include "kernel.h"
 
-struct LinuxSocket
-{
-    int fd;
-    int family;
-    int type;
-    int protocol;
-};
+class LinuxKernel;
 
 class ElfProcess
 {
@@ -49,7 +43,7 @@ class ElfProcess
 
     uint8_t* m_rip;
 
-    FileSystem m_fileSystem;
+    LinuxKernel* m_kernel;
     std::map<int, LinuxSocket*> m_sockets;
     std::map<int, DIR*> m_dirs;
 
@@ -58,10 +52,7 @@ class ElfProcess
     void error(int sig, siginfo_t* info, ucontext_t* ucontext);
 
     void printregs(ucontext_t* ucontext);
-    bool execSyscall(uint64_t syscall, ucontext_t* ucontext);
     bool execFSInstruction(uint8_t* rip, ucontext_t* ucontext);
-
-    void syscallErrnoResult(ucontext_t* ucontext, uint64_t res, bool success, int err);
 
     uint8_t fetch8();
     uint32_t fetch32();
@@ -105,6 +96,15 @@ printf("ElfProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsPt
     {
         return m_fsPtr;
     }
+
+    void setFS(uint64_t fs, uint64_t size)
+    {
+        m_fs = fs;
+        m_fsPtr = m_fs + size;
+    }
+
+    uint64_t getBrk() { return m_brk; }
+    void setBrk(uint64_t brk) { m_brk = brk; }
 
     uint64_t getNextLibraryLoadAddr()
     {

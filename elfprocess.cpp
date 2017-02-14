@@ -35,6 +35,7 @@
 
 #include "elfprocess.h"
 #include "elflibrary.h"
+#include "kernel.h"
 #include "utils.h"
 #include "tls.h"
 
@@ -58,6 +59,8 @@ ElfProcess::ElfProcess(Line* line, ElfExec* exec)
 
     m_elf = exec;
     m_elf->setElfProcess(this);
+
+    m_kernel = new LinuxKernel(this);
 
     m_libraryLoadAddr = 0x40000000;
 }
@@ -289,11 +292,11 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         {
             int syscall = ucontext->uc_mcontext->__ss.__rax;
 
-//#ifdef DEBUG
+#ifdef DEBUG
             log("trap: %p: SYSCALL 0x%x", info->si_addr, syscall);
-//#endif
+#endif
 
-            execSyscall(syscall, ucontext);
+            m_kernel->syscall(syscall, ucontext);
 
             // Skip it!
             ucontext->uc_mcontext->__ss.__rip += 2;
