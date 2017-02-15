@@ -22,7 +22,12 @@ LinuxKernel::~LinuxKernel()
 
 bool LinuxKernel::syscall(uint64_t syscall, ucontext_t* ucontext)
 {
-    return (this->*m_syscalls[syscall])(syscall, ucontext);
+    bool res = (this->*m_syscalls[syscall])(syscall, ucontext);
+    if (!res)
+    {
+        exit(255);
+    }
+    return true;
 }
 
 SYSCALL_METHOD(notimplemented)
