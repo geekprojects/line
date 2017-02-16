@@ -526,9 +526,10 @@ bool ElfBinary::mapDynamic()
 #endif
 
     uint64_t loadAddr = m_elfProcess->getNextLibraryLoadAddr();
-#ifdef DEBUG
-    printf("ElfBinary::mapDynamic: %s: loadAddr=0x%llx\n", m_path, loadAddr);
-#endif
+    if (m_elfProcess->getLine()->getConfigTrace())
+    {
+        printf("ElfBinary::mapDynamic: %s: loadAddr=0x%llx\n", m_path, loadAddr);
+    }
 
     // Allocate a base location for this library now we know how big it is
     m_base = (uint64_t)mmap(

@@ -37,6 +37,8 @@ class Line
     pthread_cond_t m_singleStepCond;
     pthread_mutex_t m_singleStepCondMutex;
 
+    bool m_configTrace;
+
  public:
     Line();
     ~Line();
@@ -47,6 +49,9 @@ class Line
 
     void signal();
     void waitForSingleStep();
+
+    void setConfigTrace(bool trace) { m_configTrace = trace; }
+    bool getConfigTrace() { return m_configTrace; }
 
     ElfExec* getElfBinary() { return &m_elfBinary; }
 

@@ -89,6 +89,8 @@ printf("ElfProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsPt
     ElfProcess(Line* line, ElfExec* exec);
     ~ElfProcess();
 
+    Line* getLine() { return m_line; }
+
     bool start(int argc, char** argv);
 
     uint64_t getFS() { return m_fs; };

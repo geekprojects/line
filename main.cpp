@@ -21,34 +21,72 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <getopt.h>
+
 #include "line.h"
 #include "filesystem.h"
 
+static const struct option g_options[] =
+{
+    { "trace",    no_argument,       NULL, 't' },
+    { NULL,       0,                 NULL, 0 }
+};
+
 int main(int argc, char** argv)
 {
-    if (argc < 2)
+    Line line;
+
+    while (true)
+    {
+        int c = getopt_long(
+            argc,
+            argv,
+            "+t",
+            g_options,
+            NULL);
+
+        if (c == -1)
+        {
+            break;
+        }
+
+        switch (c)
+        {
+            case 't':
+                line.setConfigTrace(true);
+                break;
+            default:
+                exit(1);
+                break;
+        }
+    }
+
+    int remaining_argc = argc - optind;
+    if (remaining_argc <= 0)
     {
         printf("%s <executable> <args ...>\n", argv[0]);
         exit(1);
     }
 
-    char* execargv[argc - 1];
+    const char* executable = argv[optind];
+
+    char* execargv[remaining_argc];
     int i;
-    for (i = 0; i < argc - 1; i++)
+    for (i = 0; i < remaining_argc; i++)
     {
-        execargv[i] = strdup(argv[i + 1]);
+        execargv[i] = strdup(argv[i + optind]);
     }
 
     // First see if we can find the executable in the Linux vfs
     FileSystem fs;
-    char* linuxExec = fs.path2osx(argv[1]);
+    char* linuxExec = fs.path2osx(executable);
     int a;
     a = access(linuxExec, F_OK | X_OK);
     if (a != 0)
     {
         // Nope, try the normal file system
         free(linuxExec);
-        linuxExec = argv[1];
+        linuxExec = strdup(executable);
         a = access(linuxExec, F_OK | X_OK);
     }
 
@@ -58,7 +96,6 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    Line line;
     bool res;
     res = line.open(linuxExec);
     if (!res)
@@ -67,7 +104,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    line.execute(argc - 1, execargv);
+    line.execute(remaining_argc, execargv);
     return 0;
 }
 

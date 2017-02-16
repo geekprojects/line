@@ -171,8 +171,10 @@ bool ElfProcess::start(int argc, char** argv)
     pthread_threadid_np(NULL, &tid);
     pthread->tid = tid;
 
+#ifdef DEBUG
     printf("ElfProcess::start: pthread pid=%p\n", &(pthread->pid));
     printf("ElfProcess::start: pthread tid=%p\n", &(pthread->tid));
+#endif
 
     writeFS64(0, m_fsPtr);
 
@@ -285,9 +287,11 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
             return;
         }
 
-#ifdef DEBUG
-        log("trap: %p: 0x%x 0x%x 0x%x", addr, *addr, *(addr + 1), *(addr + 2));
-#endif
+        if (m_line->getConfigTrace())
+        {
+            log("trap: %p: 0x%x 0x%x 0x%x", addr, *addr, *(addr + 1), *(addr + 2));
+        }
+
         if (*addr == 0x0f && *(addr + 1) == 0x05)
         {
             int syscall = ucontext->uc_mcontext->__ss.__rax;
