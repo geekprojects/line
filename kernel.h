@@ -20,7 +20,7 @@ struct LinuxSocket
 };
 
 class LinuxKernel;
-class ElfProcess;
+class LineProcess;
 typedef bool(LinuxKernel::*syscall_t)(uint64_t syscall, ucontext_t* ucontext);
 
 #define SYSCALL_DEFINE(_name) bool sys_ ## _name(uint64_t syscall, ucontext_t* ucontext)
@@ -30,7 +30,7 @@ class LinuxKernel
 {
  private:
     FileSystem m_fileSystem;
-    ElfProcess* m_process;
+    LineProcess* m_process;
 
     std::map<int, LinuxSocket*> m_sockets;
     std::map<int, DIR*> m_dirs;
@@ -42,7 +42,7 @@ class LinuxKernel
     void log(const char* __format, ...);
 
  public:
-    LinuxKernel(ElfProcess* process);
+    LinuxKernel(LineProcess* process);
     ~LinuxKernel();
 
     bool syscall(uint64_t syscall, ucontext_t* ucontext);
@@ -116,7 +116,6 @@ class LinuxKernel
     SYSCALL_DEFINE(exit_group);
     SYSCALL_DEFINE(tgkill);
     SYSCALL_DEFINE(openat);
-
 };
 
 #endif

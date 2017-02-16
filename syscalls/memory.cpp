@@ -8,7 +8,7 @@
 #include <sys/mman.h>
 
 #include "kernel.h"
-#include "elfprocess.h"
+#include "process.h"
 #include "memory.h"
 
 SYSCALL_METHOD(mmap)
@@ -148,12 +148,12 @@ SYSCALL_METHOD(msync)
     int flags = ucontext->uc_mcontext->__ss.__rdx;
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_msync: addr=%p, len=%ld, flags=%d\n", addr, len, flags);
+    log("sys_msync: addr=%p, len=%ld, flags=%d", addr, len, flags);
 #endif
     int res = msync(addr, len, flags);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_msync: res=%d, err=%d\n", res, err);
+    log("sys_msync: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res == 0, err);
     return true;
@@ -165,13 +165,13 @@ SYSCALL_METHOD(mincore)
     size_t len = ucontext->uc_mcontext->__ss.__rsi;
     char* vec = (char*)(ucontext->uc_mcontext->__ss.__rdx);
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_mincore: start=0x%lx, len=%ld, vec=%p\n", start, len, vec);
+    log("sys_mincore: start=0x%lx, len=%ld, vec=%p", start, len, vec);
 #endif
     int res;
     res = mincore((void*)start, len, vec);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_mincore: res=%d, err=%d\n", res, err);
+    log("sys_mincore: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res != -1, err);
     return true;
@@ -182,13 +182,13 @@ SYSCALL_METHOD(mlock)
     void* addr = (void*)(ucontext->uc_mcontext->__ss.__rdi);
     unsigned long len = ucontext->uc_mcontext->__ss.__rsi;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_mlock: addr=%p, len=%ld\n", addr, len);
+    log("sys_mlock: addr=%p, len=%ld", addr, len);
 #endif
     int res;
     res = mlock(addr, len);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_mlock: res=%d, err=%d\n", res, err);
+    log("sys_mlock: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res == 0, err);
 

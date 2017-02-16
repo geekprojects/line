@@ -33,7 +33,7 @@
 #include <mach/mach_port.h>
 #include <mach/mach_interface.h>
 
-#include "elfprocess.h"
+#include "process.h"
 #include "elflibrary.h"
 #include "kernel.h"
 #include "utils.h"
@@ -43,7 +43,7 @@
 
 using namespace std;
 
-static ElfProcess* g_elfProcess = NULL;
+static LineProcess* g_elfProcess = NULL;
 
 extern char **environ;
 
@@ -52,30 +52,30 @@ uint64_t tls_get_addr()
     return g_elfProcess->getFSPtr();
 }
 
-ElfProcess::ElfProcess(Line* line, ElfExec* exec)
+LineProcess::LineProcess(Line* line, ElfExec* exec)
 {
     m_line = line;
     g_elfProcess = this;
 
     m_elf = exec;
-    m_elf->setElfProcess(this);
+    m_elf->setProcess(this);
 
     m_kernel = new LinuxKernel(this);
 
     m_libraryLoadAddr = 0x40000000;
 }
 
-bool ElfProcess::start(int argc, char** argv)
+bool LineProcess::start(int argc, char** argv)
 {
     // Set up sigtrap handler
     struct sigaction act;
     memset (&act, 0, sizeof(act));
-    act.sa_sigaction = ElfProcess::signalHandler;
+    act.sa_sigaction = LineProcess::signalHandler;
     act.sa_flags = SA_SIGINFO;
     sigaction(SIGTRAP, &act, 0);
 
     memset (&act, 0, sizeof(act));
-    act.sa_sigaction = ElfProcess::signalHandler;
+    act.sa_sigaction = LineProcess::signalHandler;
     act.sa_flags = SA_SIGINFO;
     sigaction(SIGSEGV, &act, 0);
 
@@ -117,7 +117,7 @@ bool ElfProcess::start(int argc, char** argv)
     }
 
 #ifdef DEBUG
-    printf("ElfProcess::start: TLS: Total size: %d\n", tlssize);
+    printf("LineProcess::start: TLS: Total size: %d\n", tlssize);
 #endif
 
     /*
@@ -136,7 +136,7 @@ bool ElfProcess::start(int argc, char** argv)
         int size = it->second->getTLSSize();
         tlspos -= size;
 #ifdef DEBUG
-        printf("ElfProcess::start: TLS: %s: size=0x%x, pos=%d\n", it->first.c_str(), size, tlspos);
+        printf("LineProcess::start: TLS: %s: size=0x%x, pos=%d\n", it->first.c_str(), size, tlspos);
 #endif
         it->second->setTLSBase(-tlspos);
     }
@@ -144,7 +144,7 @@ bool ElfProcess::start(int argc, char** argv)
     m_fs = (uint64_t)malloc(tlssize + 1024);
     m_fsPtr = m_fs + tlssize;
 #ifdef DEBUG
-    printf("ElfProcess::start: TLS: FS: 0x%llx - 0x%llx\n", m_fs, m_fsPtr);
+    printf("LineProcess::start: TLS: FS: 0x%llx - 0x%llx\n", m_fs, m_fsPtr);
 #endif
 
     m_elf->relocateLibraries();
@@ -158,7 +158,7 @@ bool ElfProcess::start(int argc, char** argv)
         tlsend -= size;
         void* initpos = (void*)(tlsend /*- tlspos*/);
 #ifdef DEBUG
-        printf("ElfProcess::start: TLS: %s: init: initpos=%p\n", it->first.c_str(), initpos);
+        printf("LineProcess::start: TLS: %s: init: initpos=%p\n", it->first.c_str(), initpos);
 #endif
         it->second->initTLS(initpos);
     }
@@ -172,14 +172,14 @@ bool ElfProcess::start(int argc, char** argv)
     pthread->tid = tid;
 
 #ifdef DEBUG
-    printf("ElfProcess::start: pthread pid=%p\n", &(pthread->pid));
-    printf("ElfProcess::start: pthread tid=%p\n", &(pthread->tid));
+    printf("LineProcess::start: pthread pid=%p\n", &(pthread->pid));
+    printf("LineProcess::start: pthread tid=%p\n", &(pthread->tid));
 #endif
 
     writeFS64(0, m_fsPtr);
 
 #ifdef DEBUG
-    printf("ElfProcess::start: suspending...\n");
+    printf("LineProcess::start: suspending...\n");
 #endif
 
     // Tell the parent that we're ready!
@@ -204,7 +204,7 @@ bool ElfProcess::start(int argc, char** argv)
     return true;
 }
 
-void ElfProcess::signalHandler(int sig, siginfo_t* info, void* contextptr)
+void LineProcess::signalHandler(int sig, siginfo_t* info, void* contextptr)
 {
     ucontext_t* ucontext = (ucontext_t*)contextptr;
 
@@ -218,7 +218,7 @@ void ElfProcess::signalHandler(int sig, siginfo_t* info, void* contextptr)
     }
 }
 
-void ElfProcess::printregs(ucontext_t* ucontext)
+void LineProcess::printregs(ucontext_t* ucontext)
 {
     printf("rax=0x%08llx, rbx=0x%08llx, rcx=0x%08llx, rdx=0x%08llx\n",
         ucontext->uc_mcontext->__ss.__rax,
@@ -250,7 +250,7 @@ void ElfProcess::printregs(ucontext_t* ucontext)
         m_fs);
 }
 
-void ElfProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
+void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 {
     log(
         "error: sig=%d, errno=%d, address=%p\n",
@@ -263,7 +263,7 @@ void ElfProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
     exit(1);
 }
 
-void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
+void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 {
     while (true)
     {
@@ -282,7 +282,7 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         {
             // Line binary or kernel
 #ifdef DEBUG_OSX
-            printf("ElfProcess::trap: %p: line\n", addr);
+            printf("LineProcess::trap: %p: line\n", addr);
 #endif
             return;
         }
@@ -318,7 +318,7 @@ void ElfProcess::trap(siginfo_t* info, ucontext_t* ucontext)
     }
 }
 
-void ElfProcess::log(const char* format, ...)
+void LineProcess::log(const char* format, ...)
 {
     va_list va;
     va_start(va, format);

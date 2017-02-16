@@ -70,8 +70,8 @@ SYSCALL_METHOD(openat)
     int osx_flags = oflags2osx(flags);
 
 #ifdef DEBUG
-    printf(
-        "ElfProcess::execSyscall: sys_openat: dfd=%lld, filename=%p, flags=0x%x (0x%x), mode=0x%x\n",
+    log(
+        "sys_openat: dfd=%lld, filename=%p, flags=0x%x (0x%x), mode=0x%x",
         dfd,
         filename,
         flags,
@@ -87,7 +87,7 @@ SYSCALL_METHOD(openat)
     int res = m_fileSystem.openat(dfd, filename, osx_flags, mode);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_openat: res=%d, errno=%d\n", res, err);
+    log("sys_openat: res=%d, errno=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res >= 0, err);
 
@@ -100,13 +100,13 @@ SYSCALL_METHOD(creat)
     unsigned int mode = ucontext->uc_mcontext->__ss.__rsi;
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_creat: pathname=%s, mode=0x%x\n", pathname, mode);
+    log("sys_creat: pathname=%s, mode=0x%x", pathname, mode);
 #endif
 
     int res = m_fileSystem.openat(AT_FDCWD, pathname, O_CREAT | O_TRUNC | O_WRONLY, mode);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_creat: res=%d, errno=%d\n", res, err);
+    log("sys_creat: res=%d, errno=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res >= 0, err);
 
@@ -151,13 +151,13 @@ SYSCALL_METHOD(writev)
     iovec* vec = (iovec*)(ucontext->uc_mcontext->__ss.__rsi);
     unsigned long vlen = ucontext->uc_mcontext->__ss.__rdx;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall:  -> sys_writev: fd=%d, vec=%p (%p, %lu), vlen=%lu\n", fd, vec, vec->iov_base, vec->iov_len, vlen);
+    log("sys_writev: fd=%d, vec=%p (%p, %lu), vlen=%lu", fd, vec, vec->iov_base, vec->iov_len, vlen);
 #endif
 
     ssize_t res = writev(fd, vec, vlen);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall:  -> sys_writev: res=%lu\n", res);
+    log("sys_writev: res=%lu", res);
 #endif
     syscallErrnoResult(ucontext, res, res >= 0, err);
     return true;
@@ -233,18 +233,13 @@ SYSCALL_METHOD(ioctl)
     log("execSyscall: sys_ioctl: fd=%d, cmd=0x%x, arg=0x%lx", fd, cmd, arg);
 #endif
 
-    if (fd > 2)
-    {
-        printf("ElfProcess::execSyscall: sys_ioctl:  -> Only supported for fd 1\n");
-        exit(1);
-    }
     switch (cmd)
     {
         case LINUX_TCGETS:
         {
 #ifdef DEBUG
             struct termios* t = (struct termios*)arg;
-            printf("ElfProcess::execSyscall: sys_ioctl: TCGETS: iflag=0x%x, oflag=0x%x, cflag=0x%x, lflag=0x%x\n",
+            log("sys_ioctl: TCGETS: iflag=0x%x, oflag=0x%x, cflag=0x%x, lflag=0x%x",
                 t->c_iflag,
                 t->c_oflag,
                 t->c_cflag,
@@ -256,7 +251,7 @@ SYSCALL_METHOD(ioctl)
         case LINUX_TIOCGWINSZ:
         {
 #ifdef DEBUG
-            printf("ElfProcess::execSyscall: sys_ioctl: TIOCGWINSZ\n");
+            log("sys_ioctl: TIOCGWINSZ");
 #endif
             struct linux_winsize* ws = (struct linux_winsize*)arg;
             ws->ws_row = 25;
@@ -285,7 +280,7 @@ SYSCALL_METHOD(ioctl)
         } break;
 
         default:
-            printf("ElfProcess::execSyscall: sys_ioctl: Unknown ioctl: 0x%x\n", cmd);
+            log("sys_ioctl: Unknown ioctl: 0x%x", cmd);
             exit(1);
             break;
     }
@@ -297,12 +292,12 @@ SYSCALL_METHOD(pipe)
     int* filedes = (int*)(ucontext->uc_mcontext->__ss.__rdi);
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_pipe: filedes=%p\n", filedes);
+    log("sys_pipe: filedes=%p", filedes);
 #endif
     int res = pipe(filedes);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_pipe: res=%d, errno=%d\n", res, err);
+    log("sys_pipe: res=%d, errno=%d", res, err);
 #endif
 
     syscallErrnoResult(ucontext, res, res != -1, err);
@@ -318,7 +313,7 @@ SYSCALL_METHOD(select)
     struct timeval* timeout = (struct timeval*)(ucontext->uc_mcontext->__ss.__r8);
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_select: nfds=%d, readfds=%p, writefds=%p, errorfds=%p, timeout=%p\n",
+    log("sys_select: nfds=%d, readfds=%p, writefds=%p, errorfds=%p, timeout=%p",
         nfds,
         readfds,
         writefds,
@@ -328,7 +323,7 @@ SYSCALL_METHOD(select)
     int res = select(nfds, readfds, writefds, errorfds, timeout);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_select: res=%d, errno=%d\n", res, err);
+    log("sys_select: res=%d, errno=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res != -1, err);
     return true;
@@ -339,14 +334,14 @@ SYSCALL_METHOD(dup)
     int filedes = ucontext->uc_mcontext->__ss.__rdi;
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_dup: fd=%d\n", filedes);
+    log("sys_dup: fd=%d", filedes);
 #endif
 
     int res = dup(filedes);
     int err = errno;
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_dup: res=%d, err=%d\n", res, err);
+    log("sys_dup: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res != -1, err);
     return true;
@@ -358,7 +353,7 @@ SYSCALL_METHOD(dup2)
     int newfd = ucontext->uc_mcontext->__ss.__rsi;
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_dup2: fd=%d, newfd=%d\n", filedes, newfd);
+    log("sys_dup2: fd=%d, newfd=%d", filedes, newfd);
 #endif
 
     int res = newfd;
@@ -369,7 +364,7 @@ SYSCALL_METHOD(dup2)
 */
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_dup2: res=%d, err=%d\n", res, err);
+    log("sys_dup2: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res != -1, err);
     return true;
@@ -399,7 +394,7 @@ SYSCALL_METHOD(fcntl)
         int res = fcntl(fd, command, arg);
        int err = errno;
 #ifdef DEBUG
-        log("ElfProcess::execSyscall: sys_fcntl: res=%d, err=%d", res, err);
+        log("sys_fcntl: res=%d, err=%d", res, err);
 #endif
         syscallErrnoResult(ucontext, res, res != -1, err);
     }
@@ -410,12 +405,12 @@ SYSCALL_METHOD(fsync)
 {
     unsigned int fd = ucontext->uc_mcontext->__ss.__rdi;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_fsync: fd=%d\n", fd);
+    log("sys_fsync: fd=%d", fd);
 #endif
     int res = fsync(fd);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_fsync: res=%d, err=%d\n", res, err);
+    log("sys_fsync: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res == 0, err);
     return true;
@@ -426,12 +421,12 @@ SYSCALL_METHOD(ftruncate)
     unsigned int fd = ucontext->uc_mcontext->__ss.__rdi;
     unsigned long length = ucontext->uc_mcontext->__ss.__rsi;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_ftruncate: fd=%d, lendth=%ld\n", fd, length);
+    log("sys_ftruncate: fd=%d, lendth=%ld", fd, length);
 #endif
     int res = ftruncate(fd, length);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_ftruncate: res=%d, err=%d\n", res, err);
+    log("sys_ftruncate: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res == 0, err);
 
@@ -446,7 +441,7 @@ SYSCALL_METHOD(fadvise64)
     size_t len = ucontext->uc_mcontext->__ss.__rdx;
     int advice = ucontext->uc_mcontext->__ss.__r10;
 
-    printf("ElfProcess::execSyscall: sys_fadvise64: fd=%d, offset=%ld, len=%ld, advice=%d\n",
+    log("sys_fadvise64: fd=%d, offset=%ld, len=%ld, advice=%d",
         fd,
         offset,
         len,

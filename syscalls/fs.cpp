@@ -114,12 +114,12 @@ SYSCALL_METHOD(access)
     int mode = (int)(ucontext->uc_mcontext->__ss.__rsi);
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_access: path=%s, mode=0x%x\n", path, mode);
+    log("sys_access: path=%s, mode=0x%x", path, mode);
 #endif
     int res = m_fileSystem.access(path, mode);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_access:  -> res=%d, errno=%d\n", res, errno);
+    log("sys_access:  -> res=%d, errno=%d", res, errno);
 #endif
 
     syscallErrnoResult(ucontext, res, res == 0, err);
@@ -133,7 +133,7 @@ SYSCALL_METHOD(getdents)
     uint64_t direntPtr = ucontext->uc_mcontext->__ss.__rsi;
     unsigned int count = ucontext->uc_mcontext->__ss.__rdx;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_getdents: fd=%d, dirent=0x%llx, count=%d\n",
+    log("sys_getdents: fd=%d, dirent=0x%llx, count=%d",
         fd,
         direntPtr,
         count);
@@ -152,7 +152,7 @@ SYSCALL_METHOD(getdents)
         m_dirs.insert(make_pair(fd, dirp));
     }
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_getdents:  -> dirp=%p\n", dirp);
+    log("sys_getdents:  -> dirp=%p", dirp);
 #endif
 
     unsigned int offset = 0;
@@ -174,7 +174,7 @@ SYSCALL_METHOD(getdents)
         }
 
 #if 0
-               printf("ElfProcess::execSyscall: sys_getdents: %d: d_name=%s, entrylen=%d (%lu)\n", offset, dirent->d_name, entrylen, sizeof(struct linux_dirent));
+        log("sys_getdents: %d: d_name=%s, entrylen=%d (%lu)", offset, dirent->d_name, entrylen, sizeof(struct linux_dirent));
 #endif
         linux_dirent->d_ino = dirent->d_ino;
         linux_dirent->d_off = offset + entrylen;
@@ -196,12 +196,12 @@ SYSCALL_METHOD(rename)
     const char* oldname = (char*)(ucontext->uc_mcontext->__ss.__rdi);
     const char* newname = (char*)(ucontext->uc_mcontext->__ss.__rsi);
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_rename: oldname=%s, newname=%s\n", oldname, newname);
+    log("sys_rename: oldname=%s, newname=%s", oldname, newname);
 #endif
     int res = m_fileSystem.rename(oldname, newname);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_rename: res=%d, err=%d\n", res, err);
+    log("sys_rename: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res == 0, err);
 
@@ -213,7 +213,7 @@ SYSCALL_METHOD(mkdir)
     const char* pathname = (char*)(ucontext->uc_mcontext->__ss.__rdi);
     unsigned int mode = ucontext->uc_mcontext->__ss.__rsi;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_mkdir: pathname=%s, mode=0x%x\n", pathname, mode);
+    log("sys_mkdir: pathname=%s, mode=0x%x", pathname, mode);
 #endif
 
     int res = mkdir(pathname, mode);
@@ -227,12 +227,12 @@ SYSCALL_METHOD(unlink)
 {
     const char* pathname = (char*)(ucontext->uc_mcontext->__ss.__rdi);
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_unlink: pathname=%s\n", pathname);
+    log("sys_unlink: pathname=%s", pathname);
 #endif
     int res = m_fileSystem.unlink(pathname);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_unlink: res=%d, errno=%d\n", res, err);
+    log("sys_unlink: res=%d, errno=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res == 0, err);
 
@@ -245,7 +245,7 @@ SYSCALL_METHOD(readlink)
     char* buf = (char*)(ucontext->uc_mcontext->__ss.__rsi);
     size_t bufsize = ucontext->uc_mcontext->__ss.__rdx;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_readlink: path=%s (%p), buf=%p, bufsize=%lu\n", path, path, buf, bufsize);
+    log("sys_readlink: path=%s (%p), buf=%p, bufsize=%lu", path, path, buf, bufsize);
 #endif
 
     int res = -1;
@@ -272,20 +272,20 @@ SYSCALL_METHOD(getxattr)
     char* name = (char*)(ucontext->uc_mcontext->__ss.__rsi);
     void* value = (void*)(ucontext->uc_mcontext->__ss.__rdx);
     size_t size = ucontext->uc_mcontext->__ss.__r10;
-    printf("ElfProcess::execSyscall: sys_getxattr: pathname=%s, name=%s, value=%p, size=%ld\n", pathname, name, value, size);
+    log("sys_getxattr: pathname=%s, name=%s, value=%p, size=%ld", pathname, name, value, size);
     if (!strcmp(name, "security.selinux"))
     {
-        printf("ElfProcess::execSyscall: sys_getxattr:  -> No SELinux\n");
+        log("sys_getxattr:  -> No SELinux");
         ucontext->uc_mcontext->__ss.__rax = 0;
     }
     else if (!strcmp(name, "system.posix_acl_access") || !strcmp(name, "system.posix_acl_default"))
     {
-        printf("ElfProcess::execSyscall: sys_getxattr:  -> No POSIX ACLs\n");
+        log("sys_getxattr:  -> No POSIX ACLs");
         ucontext->uc_mcontext->__ss.__rax = 0;
     }
     else
     {
-        printf("ElfProcess::execSyscall: sys_getxattr:  -> Unrecognised attr: %s\n", name);
+        log("sys_getxattr:  -> Unrecognised attr: %s", name);
         exit(255);
     }
     return true;

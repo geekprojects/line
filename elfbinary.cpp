@@ -34,7 +34,7 @@
 #include "elfbinary.h"
 #include "elflibrary.h"
 #include "elfexec.h"
-#include "elfprocess.h"
+#include "process.h"
 #include "rtld.h"
 #include "utils.h"
 
@@ -525,8 +525,8 @@ bool ElfBinary::mapDynamic()
     printf("ElfBinary::mapDynamic: %s: loadMin=0x%llx, loadMax=0x%llx\n", m_path, loadMin, loadMax);
 #endif
 
-    uint64_t loadAddr = m_elfProcess->getNextLibraryLoadAddr();
-    if (m_elfProcess->getLine()->getConfigTrace())
+    uint64_t loadAddr = m_process->getNextLibraryLoadAddr();
+    if (m_process->getLine()->getConfigTrace())
     {
         printf("ElfBinary::mapDynamic: %s: loadAddr=0x%llx\n", m_path, loadAddr);
     }
@@ -629,7 +629,7 @@ bool ElfBinary::loadLibraries()
         if (library == NULL)
         {
             library = new ElfLibrary(m_exec);
-            library->setElfProcess(m_elfProcess);
+            library->setProcess(m_process);
             m_exec->addLibrary(name, library);
 
             bool res = false;

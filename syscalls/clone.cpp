@@ -16,7 +16,7 @@ SYSCALL_METHOD(clone)
     void* regs = (void*)ucontext->uc_mcontext->__ss.__r8;
 
     log(
-        "execSyscall: sys_clone: flags=0x%lx, sp=0x%lx, parent_tid=%p, child_tid=%p, regs=%p",
+        "sys_clone: flags=0x%lx, sp=0x%lx, parent_tid=%p, child_tid=%p, regs=%p",
         clone_flags,
         newsp,
         parent_tid,
@@ -24,18 +24,18 @@ SYSCALL_METHOD(clone)
         regs);
     if (clone_flags != 0x1200011)
     {
-        log("execSyscall: sys_clone: Unhandled flags: 0x%lx", clone_flags);
+        log("sys_clone: Unhandled flags: 0x%lx", clone_flags);
     }
 
     fflush(stdout);
 
     pid_t pid = fork();
     int err = errno;
-    log( "execSyscall: sys_clone: pid=%d, err=%d", pid, err);
+    log( "sys_clone: pid=%d, err=%d", pid, err);
 
     if (pid < 0)
     {
-        log("execSyscall: sys_clone: Failed to fork, err=%d",
+        log("sys_clone: Failed to fork, err=%d",
             err);
         ucontext->uc_mcontext->__ss.__rax = -err;
         exit(255);
@@ -43,14 +43,14 @@ SYSCALL_METHOD(clone)
     else if (pid == 0)
     {
         // Child
-        log("execSyscall: sys_clone: Child!");
+        log("sys_clone: Child!");
         ucontext->uc_mcontext->__ss.__rax = 0;
         if (child_tid != NULL)
         {
             uint64_t tid;
             pthread_threadid_np(NULL, &tid);
             log(
-                "execSyscall: sys_clone: TID: addr=0x%llx, old=%lld, new=%lld",
+                "sys_clone: TID: addr=0x%llx, old=%lld, new=%lld",
                 child_tid,
                 *((uint64_t*)child_tid),
                 tid);
@@ -60,7 +60,7 @@ SYSCALL_METHOD(clone)
     else
     {
         // Parent
-        log("execSyscall: sys_clone: Parent!");
+        log("sys_clone: Parent!");
         ucontext->uc_mcontext->__ss.__rax = pid;
     }
     return true;

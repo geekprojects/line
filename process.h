@@ -30,7 +30,7 @@
 
 class LinuxKernel;
 
-class ElfProcess
+class LineProcess
 {
  private:
     Line* m_line;
@@ -65,7 +65,7 @@ class ElfProcess
     {
         uint64_t* ptr = (uint64_t*)((int64_t)m_fsPtr + offset);
 #ifdef DEBUG_FS
-printf("ElfProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsPtr, ptr);
+printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsPtr, ptr);
 #endif
         return *ptr;
     }
@@ -80,14 +80,14 @@ printf("ElfProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsPt
     {
         uint64_t* ptr = (uint64_t*)((int64_t)m_fsPtr + offset);
 #ifdef DEBUG_FS
-        printf("ElfProcess::writeS64: offset=%d, m_fsPtr=0x%llx -> %p = 0x%llx\n", offset, m_fsPtr, ptr, value);
+        printf("LineProcess::writeS64: offset=%d, m_fsPtr=0x%llx -> %p = 0x%llx\n", offset, m_fsPtr, ptr, value);
 #endif
         *ptr = value;
     }
 
  public:
-    ElfProcess(Line* line, ElfExec* exec);
-    ~ElfProcess();
+    LineProcess(Line* line, ElfExec* exec);
+    ~LineProcess();
 
     Line* getLine() { return m_line; }
 

@@ -31,7 +31,7 @@
 #include <string>
 
 #include "elflibrary.h"
-#include "elfprocess.h"
+#include "process.h"
 
 using namespace std;
 

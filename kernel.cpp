@@ -11,7 +11,7 @@ syscall_t LinuxKernel::m_syscalls[] =
 #include "syscalltable.h"
 };
 
-LinuxKernel::LinuxKernel(ElfProcess* process)
+LinuxKernel::LinuxKernel(LineProcess* process)
 {
     m_process = process;
 }
@@ -51,7 +51,7 @@ static int errno2linux(int err)
     }
     else
     {
-        printf("ElfProcess::errno2linux: Unhandled errno: %d\n", err);
+        printf("errno2linux: Unhandled errno: %d\n", err);
         exit(1);
     }
     return linux_errno;

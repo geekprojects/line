@@ -31,7 +31,7 @@
 class ElfExec;
 class ElfLibrary;
 class LibraryEntry;
-class ElfProcess;
+class LineProcess;
 class ElfBinary;
 
 struct IFuncRela
@@ -44,7 +44,7 @@ struct IFuncRela
 class ElfBinary
 {
  protected:
-    ElfProcess* m_elfProcess;
+    LineProcess* m_process;
     ElfExec* m_exec;
 
     char* m_path;
@@ -95,7 +95,7 @@ class ElfBinary
     virtual bool relocate();
     bool relocateIFuncs();
 
-    void setElfProcess(ElfProcess* elfProcess) { m_elfProcess = elfProcess; }
+    void setProcess(LineProcess* process) { m_process = process; }
     char* getPath() { return m_path; }
 
     int getTLSSize() { return m_tlsSize; }

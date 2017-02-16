@@ -28,7 +28,7 @@
 #include <mach/mach_interface.h>
 
 #include "line.h"
-#include "elfprocess.h"
+#include "process.h"
 #include "utils.h"
 
 #define X86_EFLAGS_T 0x100UL
@@ -137,7 +137,7 @@ bool Line::execute(int argc, char** argv)
 
 void Line::elfMain(int argc, char** argv)
 {
-    ElfProcess* elfProcess = new ElfProcess(this, &m_elfBinary);
+    LineProcess* process = new LineProcess(this, &m_elfBinary);
 
     bool res;
     res = m_elfBinary.map();
@@ -152,7 +152,7 @@ void Line::elfMain(int argc, char** argv)
         exit(1);
     }
 
-    elfProcess->start(argc, argv);
+    process->start(argc, argv);
 }
 
 void Line::signal()
