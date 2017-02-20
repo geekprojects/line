@@ -27,6 +27,9 @@
 #include "line.h"
 #include "elfexec.h"
 #include "kernel.h"
+#include "mainthread.h"
+
+#include <deque>
 
 class LinuxKernel;
 
@@ -35,6 +38,14 @@ class LineProcess
  private:
     Line* m_line;
     ElfExec* m_elf;
+
+    std::map<pthread_t, LineThread*> m_threads;
+    MainThread* m_mainThread;
+
+    pthread_cond_t m_requestCond;
+    pthread_mutex_t m_requestCondMutex;
+    pthread_mutex_t m_requestMutex;
+    std::deque<LineThread*> m_requests;
 
     uint64_t m_fs;
     uint64_t m_fsPtr;
@@ -85,11 +96,17 @@ printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsP
         *ptr = value;
     }
 
+    void setSingleStep(LineThread* thread);
+
  public:
     LineProcess(Line* line, ElfExec* exec);
     ~LineProcess();
 
     Line* getLine() { return m_line; }
+    ElfExec* getExec() { return m_elf; }
+
+    void addThread(LineThread* thread);
+    LineThread* getCurrentThread();
 
     bool start(int argc, char** argv);
 
@@ -114,6 +131,8 @@ printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsP
         m_libraryLoadAddr += 0x1000000;
         return addr;
     }
+
+    bool requestSingleStep(LineThread* thread);
 
     void log(const char* __format, ...);
 };

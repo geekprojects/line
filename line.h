@@ -30,13 +30,6 @@ class Line
  private:
     ElfExec m_elfBinary;
 
-    pthread_t m_elfThread;
-    pthread_cond_t m_cond;
-    pthread_mutex_t m_condMutex;
-
-    pthread_cond_t m_singleStepCond;
-    pthread_mutex_t m_singleStepCondMutex;
-
     bool m_configTrace;
 
  public:
@@ -47,15 +40,10 @@ class Line
 
     bool execute(int argc, char** argv);
 
-    void signal();
-    void waitForSingleStep();
-
     void setConfigTrace(bool trace) { m_configTrace = trace; }
     bool getConfigTrace() { return m_configTrace; }
 
     ElfExec* getElfBinary() { return &m_elfBinary; }
-
-    void elfMain(int argc, char** argv);
 };
 
 

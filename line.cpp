@@ -33,24 +33,12 @@
 
 #define X86_EFLAGS_T 0x100UL
 
-static Line* g_line = NULL;
-
 Line::Line()
 {
-    g_line = this;
-
-    pthread_cond_init(&m_cond, NULL);
-    pthread_mutex_init(&m_condMutex, NULL);
-    pthread_cond_init(&m_singleStepCond, NULL);
-    pthread_mutex_init(&m_singleStepCondMutex, NULL);
 }
 
 Line::~Line()
 {
-    pthread_cond_destroy(&m_cond);
-    pthread_mutex_destroy(&m_condMutex);
-    pthread_cond_destroy(&m_singleStepCond);
-    pthread_mutex_destroy(&m_singleStepCondMutex);
 }
 
 bool Line::open(const char* elfpath)
@@ -66,76 +54,7 @@ bool Line::open(const char* elfpath)
     return true;
 }
 
-struct elfthreaddata
-{
-    Line* line;
-    int argc;
-    char** argv;
-};
-
-static void* elfentry(void* args)
-{
-    elfthreaddata* data = (elfthreaddata*)args;
-    data->line->elfMain(data->argc, data->argv);
-    return NULL;
-}
-
 bool Line::execute(int argc, char** argv)
-{
-    elfthreaddata* data = new elfthreaddata();
-    data->line = this;
-    data->argc = argc;
-    data->argv = argv;
-
-    // Create ELF Thread
-    pthread_create(&m_elfThread, NULL, elfentry, data);
-
-    // Get ELF Thread port
-    task_t port = pthread_mach_thread_np(m_elfThread);
-
-    // Wait for ELF Thread to be ready
-    pthread_cond_wait(&m_cond, &m_condMutex);
-
-    int res;
-
-#ifdef DEBUG
-    printf("Line::execute: Setting single step...\n");
-#endif
-
-    /*
-     * Set the Trace flag on the child
-     */
-
-    // Get current state
-    x86_thread_state_t gp_regs;
-    unsigned int gp_count = x86_THREAD_STATE_COUNT;
-    res = thread_get_state(port, x86_THREAD_STATE, (thread_state_t)&gp_regs, &gp_count);
-    if (res != 0)
-    {
-        int err = errno;
-        printf("Line::execute: Failed to get thread state: res=%d, err=%d\n", res, err);
-        exit(1);
-    }
-
-    // Set Single Step flags in eflags
-    gp_regs.uts.ts64.__rflags = (gp_regs.uts.ts64.__rflags & ~X86_EFLAGS_T) | X86_EFLAGS_T;
-    res = thread_set_state(
-        port,
-        x86_THREAD_STATE,
-        (thread_state_t) &gp_regs,
-        gp_count);
-
-    // Wake the ELF Thread (In to Single Step mode)
-    pthread_cond_signal(&m_singleStepCond);
-
-    // Wait for the ELF thread to complete
-    void* value;
-    pthread_join(m_elfThread, &value);
-
-    return true;
-}
-
-void Line::elfMain(int argc, char** argv)
 {
     LineProcess* process = new LineProcess(this, &m_elfBinary);
 
@@ -153,15 +72,7 @@ void Line::elfMain(int argc, char** argv)
     }
 
     process->start(argc, argv);
-}
 
-void Line::signal()
-{
-    pthread_cond_signal(&m_cond);
-}
-
-void Line::waitForSingleStep()
-{
-    pthread_cond_wait(&m_singleStepCond, &m_singleStepCondMutex);
+    return true;
 }
 
