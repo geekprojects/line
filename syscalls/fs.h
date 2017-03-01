@@ -55,4 +55,24 @@ struct linux_dirent
 */
 } __attribute__((__packed__));
 
+typedef struct {
+        int     val[2];
+} __kernel_fsid_t;
+
+struct linux_statfs {
+        long f_type;
+        long f_bsize;
+        long f_blocks;
+        long f_bfree;
+        long f_bavail;
+        long f_files;
+        long f_ffree;
+        __kernel_fsid_t f_fsid;
+        long f_namelen;
+        long f_frsize;
+        long f_flags;
+        long f_spare[4];
+};
+
+
 #endif

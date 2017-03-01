@@ -5,9 +5,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "kernel.h"
-//#include "io.h"
+#include "signals.h"
 
 
 SYSCALL_METHOD(rt_sigaction)
@@ -62,32 +63,92 @@ SYSCALL_METHOD(rt_sigsuspend)
     return true;
 }
 
+SYSCALL_METHOD(sigaltstack)
+{
+    linux_stack_t* linux_uss = (linux_stack_t*)(ucontext->uc_mcontext->__ss.__rdi);
+    linux_stack_t* linux_uoss = (linux_stack_t*)ucontext->uc_mcontext->__ss.__rsi;
+    log("sys_sigaltstack: linux_uss=%p, linux_uoss=%p", linux_uss, linux_uoss);
+
+    if (linux_uss != NULL)
+    {
+        return false;
+    }
+
+    stack_t osx_uoss;
+    int res = sigaltstack(NULL, &osx_uoss);
+    int err = errno;
+
+    if (res == 0)
+    {
+        linux_uoss->ss_sp = osx_uoss.ss_sp;
+        linux_uoss->ss_size = osx_uoss.ss_size;
+        linux_uoss->ss_flags = 0;
+        if (osx_uoss.ss_flags & SS_ONSTACK)
+        {
+            linux_uoss->ss_flags |= LINUX_SS_ONSTACK;
+        }
+        if (osx_uoss.ss_flags & SS_DISABLE)
+        {
+            linux_uoss->ss_flags |= LINUX_SS_DISABLE;
+        }
+    }
+
+    syscallErrnoResult(ucontext, res, res == 0, err);
+    log("sys_sigaltstack: res=%d, err=%d", res, err);
+
+    return true;
+}
+
 SYSCALL_METHOD(wait4)
 {
     int upid = ucontext->uc_mcontext->__ss.__rdi;
     int* stat_addr = (int*)(ucontext->uc_mcontext->__ss.__rsi);
-    int options = ucontext->uc_mcontext->__ss.__rdx;
+    int linux_options = ucontext->uc_mcontext->__ss.__rdx;
     void* rusage = (void*)ucontext->uc_mcontext->__ss.__r10;
-//#ifdef DEBUG
-    log("execSyscall: sys_wait4: upid=%d, stat_addr=%p, options=0x%x, rusage=%p",
-        upid,
-        stat_addr,
-        options,
-        rusage);
-//#endif
 
-    while (true)
+    int osx_options = 0;
+    if (linux_options & LINUX_WNOHANG)
     {
-        sleep(1);
+        osx_options |= WNOHANG;
+    }
+    if (linux_options & LINUX_WUNTRACED)
+    {
+        osx_options |= WUNTRACED;
+    }
+    if (linux_options & LINUX_WSTOPPED)
+    {
+        osx_options |= WSTOPPED;
+    }
+    if (linux_options & LINUX_WEXITED)
+    {
+        osx_options |= WEXITED;
+    }
+    if (linux_options & LINUX_WCONTINUED)
+    {
+        osx_options |= WCONTINUED;
+    }
+    if (linux_options & LINUX_WNOWAIT)
+    {
+        osx_options |= WNOWAIT;
     }
 
-/*
-    int res = wait4(upid, stat_addr, options, NULL);
+//#ifdef DEBUG
+    log("execSyscall: sys_wait4: upid=%d, stat_addr=%p, options=0x%x (0x%x), rusage=%p",
+        upid,
+        stat_addr,
+        linux_options,
+        osx_options,
+        rusage);
+//#endif
+    //ucontext->uc_mcontext->__ss.__rax = -1;
+
+
+    int res = wait4(upid, stat_addr, osx_options, NULL);
     int err = errno;
     log("execSyscall: sys_wait4: res=%d, err=%d", res, err);
-    syscallErrnoResult(ucontext, res, res == 0, err);
-*/
-    return false;
+    syscallErrnoResult(ucontext, res, res != -1, err);
+
+    return true;
 }
 
 

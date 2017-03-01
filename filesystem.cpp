@@ -7,6 +7,8 @@
 
 #include "filesystem.h"
 
+//#define DEBUG
+
 using namespace std;
 
 struct FileSystemMount
@@ -80,6 +82,33 @@ int FileSystem::chdir(const char* path)
 
     return res;
 }
+
+int FileSystem::link(const char* oldname, const char* newname)
+{
+    char* osxOldName = path2osx(oldname);
+    if (osxOldName == NULL)
+    {
+        errno = ENOENT;
+        return -1;
+    }
+
+    char* osxNewName = path2osx(newname);
+    if (osxNewName == NULL)
+    {
+        free(osxOldName);
+        errno = ENOENT;
+        return -1;
+    }
+
+    int res = ::link(osxOldName, osxNewName);
+    int err = errno;
+    free(osxOldName);
+    free(osxNewName);
+    errno = err;
+
+    return res;
+}
+
 
 int FileSystem::unlink(const char* path)
 {

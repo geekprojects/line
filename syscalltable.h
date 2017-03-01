@@ -84,7 +84,7 @@
     &LinuxKernel::sys_mkdir,	// 83: sys_mkdir const char *pathname,int mode
     &LinuxKernel::sys_notimplemented,	// 84: sys_rmdir const char *pathname
     &LinuxKernel::sys_creat,	// 85: sys_creat const char *pathname,int mode
-    &LinuxKernel::sys_notimplemented,	// 86: sys_link const char *oldname,const char *newname
+    &LinuxKernel::sys_link,	// 86: sys_link const char *oldname,const char *newname
     &LinuxKernel::sys_unlink,	// 87: sys_unlink const char *pathname
     &LinuxKernel::sys_notimplemented,	// 88: sys_symlink const char *oldname,const char *newname
     &LinuxKernel::sys_readlink,	// 89: sys_readlink const char *path,char *buf,int bufsiz
@@ -129,13 +129,13 @@
     &LinuxKernel::sys_notimplemented,	// 128: sys_rt_sigtimedwait const sigset_t *uthese,siginfo_t *uinfo,const struct timespec *uts,size_t sigsetsize
     &LinuxKernel::sys_notimplemented,	// 129: sys_rt_sigqueueinfo pid_t pid,int sig,siginfo_t *uinfo
     &LinuxKernel::sys_rt_sigsuspend,	// 130: sys_rt_sigsuspend sigset_t *unewset,size_t sigsetsize
-    &LinuxKernel::sys_notimplemented,	// 131: sys_sigaltstack const stack_t *uss,stack_t *uoss
+    &LinuxKernel::sys_sigaltstack,	// 131: sys_sigaltstack const stack_t *uss,stack_t *uoss
     &LinuxKernel::sys_notimplemented,	// 132: sys_utime char *filename,struct utimbuf *times
     &LinuxKernel::sys_notimplemented,	// 133: sys_mknod const char *filename,umode_t mode,unsigned dev
     &LinuxKernel::sys_notimplemented,	// 134: sys_uselib NOT IMPLEMENTED
     &LinuxKernel::sys_notimplemented,	// 135: sys_personality unsigned int personality
     &LinuxKernel::sys_notimplemented,	// 136: sys_ustat unsigned dev,struct ustat *ubuf
-    &LinuxKernel::sys_notimplemented,	// 137: sys_statfs const char *pathname,struct statfs *buf
+    &LinuxKernel::sys_statfs,	// 137: sys_statfs const char *pathname,struct statfs *buf
     &LinuxKernel::sys_notimplemented,	// 138: sys_fstatfs unsigned int fd,struct statfs *buf
     &LinuxKernel::sys_notimplemented,	// 139: sys_sysfs int option,unsigned long arg1,unsigned long arg2
     &LinuxKernel::sys_notimplemented,	// 140: sys_getpriority int which,int who

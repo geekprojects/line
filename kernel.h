@@ -90,6 +90,7 @@ class LinuxKernel
     SYSCALL_DEFINE(rename);
     SYSCALL_DEFINE(mkdir);
     SYSCALL_DEFINE(creat);
+    SYSCALL_DEFINE(link);
     SYSCALL_DEFINE(unlink);
     SYSCALL_DEFINE(readlink);
     SYSCALL_DEFINE(fchmod);
@@ -104,6 +105,8 @@ class LinuxKernel
     SYSCALL_DEFINE(getpgrp);
     SYSCALL_DEFINE(getgroups);
     SYSCALL_DEFINE(rt_sigsuspend);
+    SYSCALL_DEFINE(sigaltstack);
+    SYSCALL_DEFINE(statfs);
     SYSCALL_DEFINE(mlock);
     SYSCALL_DEFINE(arch_prctl);
     SYSCALL_DEFINE(setrlimit);

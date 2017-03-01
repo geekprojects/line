@@ -15,6 +15,7 @@ class FileSystem
 
     int access(const char* path, int mode);
     int chdir(const char* path);
+    int link(const char* oldname, const char* newname);
     int unlink(const char* path);
     int rename(const char* oldname, const char* newname);
 

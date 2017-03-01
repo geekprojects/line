@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/param.h>
+#include <sys/mount.h>
 
 #include "kernel.h"
 #include "fs.h"
@@ -223,6 +225,20 @@ SYSCALL_METHOD(mkdir)
     return true;
 }
 
+SYSCALL_METHOD(link)
+{
+    const char* oldname = (char*)(ucontext->uc_mcontext->__ss.__rdi);
+    const char* newname = (char*)(ucontext->uc_mcontext->__ss.__rsi);
+
+log("sys_link: oldname=%s, newname=%s", oldname, newname);
+int res = m_fileSystem.link(oldname, newname);
+int err = errno;
+log("sys_link: res=%d, err=%d", res, err);
+    syscallErrnoResult(ucontext, res, res == 0, err);
+
+return true;
+}
+
 SYSCALL_METHOD(unlink)
 {
     const char* pathname = (char*)(ucontext->uc_mcontext->__ss.__rdi);
@@ -288,6 +304,49 @@ SYSCALL_METHOD(getxattr)
         log("sys_getxattr:  -> Unrecognised attr: %s", name);
         exit(255);
     }
+    return true;
+}
+
+SYSCALL_METHOD(statfs)
+{
+    char* pathname = (char*)ucontext->uc_mcontext->__ss.__rdi;
+    struct linux_statfs* linux_statfs = (struct linux_statfs*)(ucontext->uc_mcontext->__ss.__rsi);
+
+#ifndef DEBUG
+    log("sys_statfs: pathname=%s, linux_statfs=%p", pathname, linux_statfs);
+#endif
+
+    char* osxPathName = m_fileSystem.path2osx(pathname);
+    if (osxPathName == NULL)
+    {
+        errno = ENOENT;
+        return false;
+    }
+
+#ifndef DEBUG
+    log("sys_statfs: osxOldName=%s", osxPathName);
+#endif
+
+    struct statfs osx_statfs;
+    int res = statfs(osxPathName, &osx_statfs);
+    int err = errno;
+    log("sys_statfs: res=%d, err=%d", res, err);
+
+    if (res == 0)
+    {
+        memset(linux_statfs, 0, sizeof(struct linux_statfs));
+        linux_statfs->f_type = 0;
+        linux_statfs->f_bsize = osx_statfs.f_bsize;
+        linux_statfs->f_blocks = osx_statfs.f_blocks;
+        linux_statfs->f_bfree = osx_statfs.f_bfree;
+        linux_statfs->f_bavail = osx_statfs.f_bavail;
+        linux_statfs->f_files = osx_statfs.f_files;
+        linux_statfs->f_ffree = osx_statfs.f_ffree;
+        //linux_statfs->f_namelen = osx_statfs->f_namelen;
+    }
+
+    syscallErrnoResult(ucontext, res, res == 0, err);
+
     return true;
 }
 
