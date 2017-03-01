@@ -24,7 +24,7 @@ SYSCALL_METHOD(gettid)
     uint64_t tid;
     pthread_threadid_np(NULL, &tid);
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_gettid: tid=%lld\n", tid);
+    log("sys_gettid: tid=%lld", tid);
 #endif
     ucontext->uc_mcontext->__ss.__rax = tid;
     return true;
@@ -71,7 +71,7 @@ SYSCALL_METHOD(setpgid)
     int pid = ucontext->uc_mcontext->__ss.__rdi;
     int pgid = ucontext->uc_mcontext->__ss.__rsi;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_setpgid: pid=%d, pgid=%d\n", pid, pgid);
+    log("sys_setpgid: pid=%d, pgid=%d\n", pid, pgid);
 #endif
     int res = setpgid(pid, pgid);
     int err = errno;
@@ -84,7 +84,7 @@ SYSCALL_METHOD(set_tid_address)
 {
 #ifdef DEBUG
     int* tidptr = (int*)ucontext->uc_mcontext->__ss.__rdi;
-    printf("ElfProcess::execSyscall: sys_set_tid_address: tidptr=%p\n", tidptr);
+    log("sys_set_tid_address: tidptr=%p", tidptr);
 #endif
     ucontext->uc_mcontext->__ss.__rax = 0;
     return true;
@@ -97,7 +97,7 @@ SYSCALL_METHOD(getgroups)
     int res = getgroups(gidsetsize, grouplist);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_getgroups: res=%d, err=%d\n", res, err);
+    log("sys_getgroups: res=%d, err=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res != -1, err);
     return true;
@@ -114,7 +114,7 @@ SYSCALL_METHOD(getcwd)
     syscallErrnoResult(ucontext, (uint64_t)res, res != NULL, err);
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_getcwd: buf=%s, err=%d\n", buf, err);
+    log("sys_getcwd: buf=%s, err=%d", buf, err);
 #endif
 
     return true;
@@ -189,8 +189,17 @@ SYSCALL_METHOD(getrlimit)
     log("execSyscall: sys_getrlimit: resource=%d, rlim=%p", resource, rlim);
 #endif
 
-    if (resource <= 5)
+    if (resource <= 6)
     {
+        if (resource == 5)
+        {
+            resource = RLIMIT_AS;
+        }
+        if (resource == 6)
+        {
+            resource = RLIMIT_NPROC;
+        }
+
         int res = getrlimit(resource, rlim);
         int err = errno;
 #ifdef DEBUG
@@ -264,7 +273,7 @@ SYSCALL_METHOD(exit_group)
 {
     int errorCode = ucontext->uc_mcontext->__ss.__rdi;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_exit_group: errorCode=%d\n", errorCode);
+    log("sys_exit_group: errorCode=%d", errorCode);
 #endif
 
     exit(errorCode);
