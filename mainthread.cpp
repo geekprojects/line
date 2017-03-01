@@ -18,9 +18,7 @@ MainThread::~MainThread()
 void MainThread::entry(int argc, char** argv)
 {
     map<string, ElfLibrary*> libs = m_process->getExec()->getLibraries();
-printf("MainThread::entry: Here, setting single step...\n");
-    singleStep();
-printf("MainThread::entry: Single Step!\n");
+    singleStep(true);
 
     m_process->getExec()->relocateLibrariesIFuncs();
 

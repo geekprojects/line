@@ -33,6 +33,23 @@
 
 class LinuxKernel;
 
+enum ProcessRequestType
+{
+    REQUEST_SINGLESTEP
+};
+
+struct ProcessRequest
+{
+    ProcessRequestType type;
+    LineThread* thread;
+    //ProcessRequest() { type = REQUEST_NONE; }
+};
+
+struct ProcessRequestSingleStep : public ProcessRequest
+{
+    bool enable;
+};
+
 class LineProcess
 {
  private:
@@ -45,7 +62,7 @@ class LineProcess
     pthread_cond_t m_requestCond;
     pthread_mutex_t m_requestCondMutex;
     pthread_mutex_t m_requestMutex;
-    std::deque<LineThread*> m_requests;
+    std::deque<ProcessRequest*> m_requests;
 
     uint64_t m_fs;
     uint64_t m_fsPtr;
@@ -62,7 +79,6 @@ class LineProcess
     void trap(siginfo_t* info, ucontext_t* ucontext);
     void error(int sig, siginfo_t* info, ucontext_t* ucontext);
 
-    void printregs(ucontext_t* ucontext);
     bool execFSInstruction(uint8_t* rip, ucontext_t* ucontext);
 
     uint8_t fetch8();
@@ -96,7 +112,6 @@ printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsP
         *ptr = value;
     }
 
-    void setSingleStep(LineThread* thread);
 
  public:
     LineProcess(Line* line, ElfExec* exec);
@@ -108,7 +123,9 @@ printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsP
     void addThread(LineThread* thread);
     LineThread* getCurrentThread();
 
+    bool init();
     bool start(int argc, char** argv);
+    bool requestLoop();
 
     uint64_t getFS() { return m_fs; };
     uint64_t getFSPtr()
@@ -132,8 +149,12 @@ printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsP
         return addr;
     }
 
-    bool requestSingleStep(LineThread* thread);
+    bool request(ProcessRequest* request);
+    bool requestSingleStep(LineThread* thread, bool enable);
+    void checkSingleStep();
+    void setSingleStep(LineThread* thread, bool enable);
 
+    void printregs(ucontext_t* ucontext);
     void log(const char* __format, ...);
 };
 

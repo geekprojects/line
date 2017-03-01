@@ -66,9 +66,16 @@ LineProcess::LineProcess(Line* line, ElfExec* exec)
 
     m_libraryLoadAddr = 0x40000000;
 
+    init();
+}
+
+bool LineProcess::init()
+{
     pthread_cond_init(&m_requestCond, NULL);
     pthread_mutex_init(&m_requestCondMutex, NULL);
     pthread_mutex_init(&m_requestMutex, NULL);
+
+    return true;
 }
 
 bool LineProcess::start(int argc, char** argv)
@@ -78,6 +85,7 @@ bool LineProcess::start(int argc, char** argv)
     memset (&act, 0, sizeof(act));
     act.sa_sigaction = LineProcess::signalHandler;
     act.sa_flags = SA_SIGINFO;
+    //sigemptyset(&act.sa_mask);
     sigaction(SIGTRAP, &act, 0);
 
     memset (&act, 0, sizeof(act));
@@ -191,26 +199,40 @@ bool LineProcess::start(int argc, char** argv)
     m_mainThread = new MainThread(this);
     m_mainThread->start(argc, argv);
 
-    printf("LineProcess::start: Starting request loop\n");
+    return requestLoop();
+}
+
+bool LineProcess::requestLoop()
+{
     while (true)
     {
-        printf("LineProcess::start: Waiting for request...\n");
         pthread_cond_wait(&m_requestCond, &m_requestCondMutex);
-        printf("LineProcess::start: Woken up!\n");
 
-        LineThread* request = NULL;
+        ProcessRequest* request;
+        bool hasRequest = false;
         pthread_mutex_lock(&m_requestMutex);
         if (!m_requests.empty())
         {
             request = m_requests.front();
+            hasRequest = true;
             m_requests.pop_front();
         }
         pthread_mutex_unlock(&m_requestMutex);
+#ifdef DEBUG
         printf("LineProcess::start: request: %p\n", request);
-        if (request != NULL)
+#endif
+        if (hasRequest)
         {
-            setSingleStep(request);
-            request->signalFromProcess();
+            switch (request->type)
+            {
+                case REQUEST_SINGLESTEP:
+                {
+                    ProcessRequestSingleStep* singleStep = (ProcessRequestSingleStep*)request;
+                    setSingleStep(singleStep->thread, singleStep->enable);
+                } break;
+            }
+            request->thread->signalFromProcess();
+            delete request;
         }
     }
 
@@ -340,20 +362,20 @@ LineThread* LineProcess::getCurrentThread()
 {
     pthread_t self = pthread_self();
     map<pthread_t, LineThread*>::iterator it;
-it = m_threads.find(self);
-if (it != m_threads.end())
-{
-return it->second;
-}
-return NULL;
+    it = m_threads.find(self);
+    if (it != m_threads.end())
+    {
+        return it->second;
+    }
+    return NULL;
 }
 
-void LineProcess::setSingleStep(LineThread* thread)
+void LineProcess::setSingleStep(LineThread* thread, bool enable)
 {
     int res;
 
     // Get ELF Thread port
-    task_t port = pthread_mach_thread_np(thread->getPThread());
+    task_t port = thread->getTask();
 
     /*
      * Set the Trace flag on the child
@@ -371,33 +393,78 @@ void LineProcess::setSingleStep(LineThread* thread)
     }
 
     // Set Single Step flags in eflags
-    gp_regs.uts.ts64.__rflags = (gp_regs.uts.ts64.__rflags & ~X86_EFLAGS_T) | X86_EFLAGS_T;
+    if (enable)
+    {
+        gp_regs.uts.ts64.__rflags |= X86_EFLAGS_T;
+    }
+    else
+    {
+        gp_regs.uts.ts64.__rflags &= ~X86_EFLAGS_T;
+    }
+
     res = thread_set_state(
         port,
         x86_THREAD_STATE,
         (thread_state_t) &gp_regs,
         gp_count);
+
+    if (res != 0)
+    {
+        int err = errno;
+        printf("Line::execute: Failed to set thread state: res=%d, err=%d\n", res, err);
+        exit(1);
+    }
 }
 
-bool LineProcess::requestSingleStep(LineThread* thread)
+void LineProcess::checkSingleStep()
 {
-printf("LineProcess::requestSingleStep: Adding request...\n");
+    task_t port = mach_thread_self();
+
+    /*
+     * Set the Trace flag on the child
+     */
+
+    // Get current state
+    x86_thread_state_t gp_regs;
+    unsigned int gp_count = x86_THREAD_STATE_COUNT;
+    int res = thread_get_state(port, x86_THREAD_STATE, (thread_state_t)&gp_regs, &gp_count);
+    if (res != 0)
+    {
+        int err = errno;
+        printf("Line::execute: Failed to get thread state: res=%d, err=%d\n", res, err);
+        exit(1);
+    }
+    printf("checkSingleStep: rflags=0x%llx, T=%d\n", gp_regs.uts.ts64.__rflags, !!(gp_regs.uts.ts64.__rflags & X86_EFLAGS_T));
+}
+
+bool LineProcess::request(ProcessRequest* request)
+{
+#ifdef DEBUG
+    printf("LineProcess::requestSingleStep: Adding request...\n");
+#endif
+
     // Add the request to the queue
     pthread_mutex_lock(&m_requestMutex);
-    m_requests.push_back(thread);
+    m_requests.push_back(request);
     pthread_mutex_unlock(&m_requestMutex);
 
-printf("LineProcess::requestSingleStep: Signaling process...\n");
     // Tell the request thread that there's a request waiting
     pthread_cond_signal(&m_requestCond);
 
-printf("LineProcess::requestSingleStep: Waiting for response...\n");
     // Wait for the request to be handled
-    thread->waitForProcess();
-
-printf("LineProcess::requestSingleStep: Done!\n");
+    request->thread->waitForProcess();
 
     return true;
+}
+
+bool LineProcess::requestSingleStep(LineThread* thread, bool enable)
+{
+    ProcessRequestSingleStep* req = new ProcessRequestSingleStep();
+    req->type = REQUEST_SINGLESTEP;
+    req->thread = thread;
+    req->enable = enable;
+
+    return request(req);
 }
 
 void LineProcess::log(const char* format, ...)

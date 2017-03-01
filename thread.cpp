@@ -36,14 +36,13 @@ void LineThread::start(int argc, char** argv)
     data->argv = argv;
 
     // Create ELF Thread
-    printf("LineThread::start: Creating pthread...\n");
     pthread_create(&m_pthread, NULL, trampoline, data);
 }
 
 void LineThread::initialEntry(int argc, char** argv)
 {
-m_pthread = pthread_self();
-    printf("LineThread::initialEntry: pthread=%p\n", m_pthread);
+    m_pthread = pthread_self();
+    m_task = mach_thread_self();
     m_process->addThread(this);
 
     entry(argc, argv);
@@ -54,9 +53,9 @@ void LineThread::entry(int argc, char** argv)
     printf("LineThread::entry: Here!\n");
 }
 
-void LineThread::singleStep()
+void LineThread::singleStep(bool enable)
 {
-    m_process->requestSingleStep(this);
+    m_process->requestSingleStep(this, enable);
 }
 
 void LineThread::waitForProcess()
