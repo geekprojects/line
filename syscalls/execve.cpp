@@ -2,15 +2,19 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
+#include <pthread.h>
 
 #include "kernel.h"
+#include "thread.h"
+#include "process.h"
 
 SYSCALL_METHOD(execve)
 {
     char* filename = (char*)(ucontext->uc_mcontext->__ss.__rdi);
     char** orig_argv = (char**)(ucontext->uc_mcontext->__ss.__rsi);
     char** orig_envp = (char**)(ucontext->uc_mcontext->__ss.__rdx);
-    log("execSyscall: sys_execve: filename=%s, orig_argv=%p, orig_envp=%p",
+    log("sys_execve: filename=%s, orig_argv=%p, orig_envp=%p",
         filename,
         orig_argv,
         orig_envp);
@@ -21,18 +25,26 @@ SYSCALL_METHOD(execve)
         argc++;
     }
 
-    char** new_argv = new char*[argc + 2];
-    new_argv[0] = (char*)"./line";
-    int i;
-    for (i = 0; i < argc; i++)
+    char** new_argv = new char*[argc + 3];
+
+    int i = 0;
+    int newarg = 0;
+    new_argv[newarg++] = (char*)"./line";
+    //new_argv[1] = (char*)"--trace";
+    new_argv[newarg++] = (char*)"--forked";
+
+    for (i = 0; i < argc; i++, newarg++)
     {
-        new_argv[i + 1] = orig_argv[i];
+        new_argv[newarg] = orig_argv[i];
     }
-    new_argv[argc + 1] = NULL;
+    new_argv[newarg] = NULL;
 
-    execve("./line", new_argv, orig_envp);
-    log("execSyscall: sys_execve: execve returned!?");
+    int res = execve("./line", new_argv, orig_envp);
+    int err = errno;
 
-    return false;
+    syscallErrnoResult(ucontext, res, res == 0, err);
+    log("sys_execve: execve returned! err=%d", err);
+
+    return true;
 }
 
