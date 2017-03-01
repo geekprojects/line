@@ -5,6 +5,7 @@
 #include <errno.h>
 
 #include "kernel.h"
+#include "process.h"
 
 syscall_t LinuxKernel::m_syscalls[] =
 {
@@ -22,9 +23,17 @@ LinuxKernel::~LinuxKernel()
 
 bool LinuxKernel::syscall(uint64_t syscall, ucontext_t* ucontext)
 {
+    if (syscall >= (sizeof(m_syscalls) / sizeof(syscall_t)))
+    {
+        printf("LinuxKernel::syscall: Invalid syscall: %lld\n", syscall);
+        m_process->printregs(ucontext);
+        exit(255);
+    }
     bool res = (this->*m_syscalls[syscall])(syscall, ucontext);
     if (!res)
     {
+        printf("LinuxKernel::syscall: syscall failed: %lld\n", syscall);
+        m_process->printregs(ucontext);
         exit(255);
     }
     return true;
