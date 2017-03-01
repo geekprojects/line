@@ -20,6 +20,8 @@
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
+#include <errno.h>
 
 #include <getopt.h>
 
@@ -29,6 +31,7 @@
 static const struct option g_options[] =
 {
     { "trace",    no_argument,       NULL, 't' },
+    { "forked",    no_argument,       NULL, 'f' },
     { NULL,       0,                 NULL, 0 }
 };
 
@@ -41,7 +44,7 @@ int main(int argc, char** argv)
         int c = getopt_long(
             argc,
             argv,
-            "+t",
+            "+tf",
             g_options,
             NULL);
 
@@ -55,6 +58,14 @@ int main(int argc, char** argv)
             case 't':
                 line.setConfigTrace(true);
                 break;
+
+            case 'f':
+            {
+                line.setConfigForked(true);
+                sigset_t set = 0;
+                sigprocmask(SIG_SETMASK, &set, NULL);
+            } break;
+
             default:
                 exit(1);
                 break;
@@ -92,7 +103,7 @@ int main(int argc, char** argv)
 
     if (a != 0)
     {
-        printf("%s: unable to find executable\n", argv[0]);
+        printf("%s: unable to find executable: %s -> %s\n", argv[0], executable, linuxExec);
         exit(1);
     }
 

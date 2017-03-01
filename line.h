@@ -31,6 +31,7 @@ class Line
     ElfExec m_elfBinary;
 
     bool m_configTrace;
+    bool m_configForked;
 
  public:
     Line();
@@ -42,6 +43,8 @@ class Line
 
     void setConfigTrace(bool trace) { m_configTrace = trace; }
     bool getConfigTrace() { return m_configTrace; }
+    void setConfigForked(bool v) { m_configForked = v; }
+    bool getConfigForked() { return m_configForked; }
 
     ElfExec* getElfBinary() { return &m_elfBinary; }
 };

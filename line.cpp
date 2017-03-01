@@ -35,6 +35,8 @@
 
 Line::Line()
 {
+    m_configTrace = false;
+    m_configForked = false;
 }
 
 Line::~Line()
