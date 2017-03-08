@@ -32,6 +32,8 @@ SYSCALL_METHOD(execve)
     new_argv[newarg++] = (char*)"./line";
     //new_argv[1] = (char*)"--trace";
     new_argv[newarg++] = (char*)"--forked";
+    new_argv[newarg++] = (char*)"--exec";
+    new_argv[newarg++] = filename;
 
     for (i = 0; i < argc; i++, newarg++)
     {

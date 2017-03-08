@@ -30,21 +30,24 @@
 
 static const struct option g_options[] =
 {
-    { "trace",    no_argument,       NULL, 't' },
-    { "forked",    no_argument,       NULL, 'f' },
-    { NULL,       0,                 NULL, 0 }
+    { "exec",    required_argument, NULL, 'e' },
+    { "forked",  no_argument,       NULL, 'f' },
+    { "trace",   no_argument,       NULL, 't' },
+    { NULL,      0,                 NULL, 0 }
 };
 
 int main(int argc, char** argv)
 {
     Line line;
 
+const char* execopt = NULL;
+
     while (true)
     {
         int c = getopt_long(
             argc,
             argv,
-            "+tf",
+            "+eft",
             g_options,
             NULL);
 
@@ -55,8 +58,8 @@ int main(int argc, char** argv)
 
         switch (c)
         {
-            case 't':
-                line.setConfigTrace(true);
+            case 'e':
+                execopt = optarg;
                 break;
 
             case 'f':
@@ -65,6 +68,10 @@ int main(int argc, char** argv)
                 sigset_t set = 0;
                 sigprocmask(SIG_SETMASK, &set, NULL);
             } break;
+
+            case 't':
+                line.setConfigTrace(true);
+                break;
 
             default:
                 exit(1);
@@ -80,6 +87,10 @@ int main(int argc, char** argv)
     }
 
     const char* executable = argv[optind];
+    if (execopt != NULL)
+    {
+        executable = execopt;
+    }
 
     char* execargv[remaining_argc];
     int i;
@@ -91,12 +102,21 @@ int main(int argc, char** argv)
     // First see if we can find the executable in the Linux vfs
     FileSystem fs;
     char* linuxExec = fs.path2osx(executable);
-    int a;
-    a = access(linuxExec, F_OK | X_OK);
-    if (a != 0)
+
+int a = -1;
+    if (linuxExec != NULL)
+    {
+        a = access(linuxExec, F_OK | X_OK);
+    }
+
+    if (linuxExec == NULL || a != 0)
     {
         // Nope, try the normal file system
-        free(linuxExec);
+        if (linuxExec != NULL)
+        {
+            free(linuxExec);
+        }
+
         linuxExec = strdup(executable);
         a = access(linuxExec, F_OK | X_OK);
     }
