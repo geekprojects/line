@@ -32,6 +32,7 @@
 #include <deque>
 
 class LinuxKernel;
+class LinuxProcess;
 
 enum ProcessRequestType
 {
@@ -92,7 +93,7 @@ class LineProcess
     {
         uint64_t* ptr = (uint64_t*)((int64_t)m_fsPtr + offset);
 #ifdef DEBUG_FS
-printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsPtr, ptr);
+printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_fsPtr, ptr);
 #endif
         return *ptr;
     }
@@ -107,7 +108,7 @@ printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsP
     {
         uint64_t* ptr = (uint64_t*)((int64_t)m_fsPtr + offset);
 #ifdef DEBUG_FS
-        printf("LineProcess::writeS64: offset=%d, m_fsPtr=0x%llx -> %p = 0x%llx\n", offset, m_fsPtr, ptr, value);
+        printf("LineProcess::writeFS64: offset=%lld, m_fsPtr=0x%llx -> %p = 0x%llx\n", offset, m_fsPtr, ptr, value);
 #endif
         *ptr = value;
     }
@@ -149,6 +150,8 @@ printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsP
         return addr;
     }
 
+    bool loadLibrary(const char* file, int argc, char** argv, char** env);
+
     bool request(ProcessRequest* request);
     bool requestSingleStep(LineThread* thread, bool enable);
     void checkSingleStep();
@@ -156,6 +159,8 @@ printf("LineProcess::readFS64: offset=%d, m_fsPtr=0x%llx -> %p\n", offset, m_fsP
 
     void printregs(ucontext_t* ucontext);
     void log(const char* __format, ...);
+
+    static LineProcess* getProcess();
 };
 
 

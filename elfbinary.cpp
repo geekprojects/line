@@ -68,7 +68,7 @@ void* dl_find_dso_for_object(void* addr)
 
 void* dl_open(const char *file, int mode, const void *caller_dlopen, Lmid_t nsid, int argc, char *argv[], char *env[])
 {
-    printf("dl_open: file=%s\n", file);
+    printf("dl_open: file=%s, argc=%d, argv=%p, env=%p\n", file, argc, argv, env);
     return (void*)0;
 }
 
@@ -526,7 +526,7 @@ bool ElfBinary::mapDynamic()
 #endif
 
     uint64_t loadAddr = m_process->getNextLibraryLoadAddr();
-    if (m_process->getLine()->getConfigTrace())
+    //if (m_process->getLine()->getConfigTrace())
     {
         printf("ElfBinary::mapDynamic: %s: loadAddr=0x%llx\n", m_path, loadAddr);
     }
@@ -1094,7 +1094,7 @@ void ElfBinary::relocateRela(
 
         case R_X86_64_TPOFF64:
         {
-            *dest64 = ((int)rela->r_addend - m_tlsBase);// + (int64_t)m_elfProcess->getFSPtr();
+            *dest64 = ((int)rela->r_addend + m_tlsBase);
 #ifdef DEBUG_RELOCATE
             printf("ElfBinary::relocateRela: R_X86_64_TPOFF64: %lld - %d -> %lld\n", rela->r_addend, m_tlsBase, *dest64);
 #endif
@@ -1120,9 +1120,9 @@ void ElfBinary::initTLS(void* tls)
     {
         if (phdr[i].p_type == PT_TLS)
         {
-#ifdef DEBUG
-            printf("ElfBinary::initTLS: Copying 0x%llx -> %p\n", phdr[i].p_vaddr + getBase(), tls);
-#endif
+//#ifdef DEBUG
+            printf("ElfBinary::initTLS: %s: Copying 0x%llx -> %p\n", m_path, phdr[i].p_vaddr + getBase(), tls);
+//#endif
             memcpy(
                 tls,
                 (void*)(phdr[i].p_vaddr + getBase()),

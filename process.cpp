@@ -40,6 +40,7 @@
 #include "tls.h"
 
 //#define DEBUG
+//#define DEBUG_TLS
 
 #define X86_EFLAGS_T 0x100UL
 
@@ -121,7 +122,7 @@ bool LineProcess::start(int argc, char** argv)
     m_brk = m_elf->getEnd();
 
     // Set up TLS
-    int tlssize = m_elf->getTLSSize() + sizeof(struct pthread);
+    int tlssize = m_elf->getTLSSize();// + sizeof(struct linux_pthread);
     map<string, ElfLibrary*> libs = m_elf->getLibraries();
     map<string, ElfLibrary*>::iterator it;
     for (it = libs.begin(); it != libs.end(); it++)
@@ -130,34 +131,43 @@ bool LineProcess::start(int argc, char** argv)
         tlssize += size;
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_TLS
     printf("LineProcess::start: TLS: Total size: %d\n", tlssize);
 #endif
 
     /*
-     *    +---------+
-     * -f |         | FS Base
-     *    +---------+
-     * -8 |         |
-     *    +---------+
-     * 0  | fs addr | FS Pointer
-     *    +---------+
+     *   0  +----------+  -144 exec base
+     *      | Exec TLS |
+     *  16  +----------+  -128 libc base
+     *      | libc TLS |
+     * 128  +----------+    -0 libm base
+     *      | libm TLS |
+     * 128  +----------+    -0 <-- FS Pointer
+     *  
      */
 
-    int tlspos = 0;//tlssize;
-    for (it = libs.begin(); it != libs.end(); it++)
+    int tlspos = 0;
+    map<string, ElfLibrary*>::reverse_iterator rit;
+    for (rit = libs.rbegin(); rit != libs.rend(); rit++)
     {
-        int size = it->second->getTLSSize();
-        tlspos -= size;
-#ifdef DEBUG
-        printf("LineProcess::start: TLS: %s: size=0x%x, pos=%d\n", it->first.c_str(), size, tlspos);
+        int size = rit->second->getTLSSize();
+        tlspos += size;
+        rit->second->setTLSBase(-tlspos);
+#ifdef DEBUG_TLS
+        printf("LineProcess::start: TLS: %s: size=0x%x, pos=%d\n", rit->first.c_str(), size, -tlspos);
 #endif
-        it->second->setTLSBase(-tlspos);
     }
 
-    m_fs = (uint64_t)malloc(tlssize + 1024);
+    int size = m_elf->getTLSSize();
+tlspos += size;
+#ifdef DEBUG_TLS
+    printf("LineProcess::start: TLS: %s: size=0x%x, base=%d\n", m_elf->getPath(), size, -tlspos);
+#endif
+    m_elf->setTLSBase(-tlspos);
+
+    m_fs = (uint64_t)malloc(tlssize + sizeof(struct linux_pthread));
     m_fsPtr = m_fs + tlssize;
-#ifdef DEBUG
+#ifdef DEBUG_TLS
     printf("LineProcess::start: TLS: FS: 0x%llx - 0x%llx\n", m_fs, m_fsPtr);
 #endif
 
@@ -165,20 +175,31 @@ bool LineProcess::start(int argc, char** argv)
     m_elf->relocate();
 
     tlspos = m_elf->getTLSSize();
-    uint64_t tlsend = m_fsPtr - (tlspos + 0);
+
+    void* initpos = (void*)((int64_t)m_fsPtr + m_elf->getTLSBase());
+    printf(
+        "LineProcess::start: TLS: %s: init: %d: %p-0x%llx, size=%d\n",
+        m_elf->getPath(),
+        m_elf->getTLSBase(),
+        initpos,
+        (uint64_t)initpos + m_elf->getTLSSize(),
+        m_elf->getTLSSize());
+    m_elf->initTLS(initpos);
+
     for (it = libs.begin(); it != libs.end(); it++)
     {
+        void* initpos = (void*)((int64_t)m_fsPtr + it->second->getTLSBase());
+#ifdef DEBUG_TLS
         int size = it->second->getTLSSize();
-        tlsend -= size;
-        void* initpos = (void*)(tlsend /*- tlspos*/);
-#ifdef DEBUG
-        printf("LineProcess::start: TLS: %s: init: initpos=%p\n", it->first.c_str(), initpos);
+        printf(
+            "LineProcess::start: TLS: %s: %d: init: %p-0x%llx, size=%d\n", it->first.c_str(), it->second->getTLSBase(), initpos, (uint64_t)initpos + size, size);
 #endif
         it->second->initTLS(initpos);
     }
 
     // Set up the initial pthread
-    struct pthread* pthread = (struct pthread*)m_fsPtr;
+    struct linux_pthread* pthread = (struct linux_pthread*)m_fsPtr;
+    //*((uint64_t*)(m_fsPtr + 0x00)) = (uint64_t)pthread;
     *((uint64_t*)(m_fsPtr + 0x10)) = (uint64_t)pthread;
     pthread->pid = getpid();
     uint64_t tid;
@@ -318,7 +339,7 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         }
         else if (
             ((uint64_t)addr >= IMAGE_BASE && (uint64_t)addr <= (IMAGE_BASE + 0xffffff)) ||
-            ((uint64_t)addr >= 0x7fffc0000000))
+            ((uint64_t)addr >= 0x7fff00000000))
         {
             // Line binary or kernel
 #ifdef DEBUG_OSX

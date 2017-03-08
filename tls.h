@@ -51,7 +51,7 @@ typedef struct
     void *__padding[8];
 } tcbhead_t;
 
-struct pthread
+struct linux_pthread
 {
     union
     {

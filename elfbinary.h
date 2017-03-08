@@ -100,8 +100,8 @@ class ElfBinary
 
     int getTLSSize() { return m_tlsSize; }
     void setTLSBase(int tlsbase) { m_tlsBase = tlsbase; }
+    int getTLSBase() { return m_tlsBase; }
     void initTLS(void* tls);
-    uint64_t getTLSBase();
 
     void setDynValue(uint64_t tag, uint64_t value) { m_dyn.insert(std::make_pair(tag, value)); }
     uint64_t getDynValue(uint64_t tag)
