@@ -52,48 +52,6 @@ using namespace std;
 
 typedef uint64_t(*ifunc_t)();
 
-
-void rtld_lock_recursive(void*)
-{
-}
-
-void rtld_unlock_recursive(void*)
-{
-}
-
-void* dl_find_dso_for_object(void* addr)
-{
-    return NULL;
-}
-
-void* dl_open(const char *file, int mode, const void *caller_dlopen, Lmid_t nsid, int argc, char *argv[], char *env[])
-{
-    printf("dl_open: file=%s, argc=%d, argv=%p, env=%p\n", file, argc, argv, env);
-    return (void*)0;
-}
-
-int dl_catch_error (const char **objname, const char **errstring,
-                            bool *mallocedp, void (*operate) (void *),
-                            void *args)
-{
-    printf("dl_catch_error: objname=%p, errstring=%p\n", objname, errstring);
-    (*operate)(args);
-    return 0;
-}
-
-uint64_t _dl_lookup_symbol_x(
-    const char *,
-    struct link_map *,
-    const Elf64_Sym **,
-    struct r_scope_elem *[],
-    const struct r_found_version *,
-    int, int,
-    struct link_map *)
-{
-    printf("_dl_lookup_symbol_x: Here!\n");
-    return 0;
-}
-
 uint64_t vdso_time(time_t* t)
 {
     return time(t);
@@ -104,59 +62,18 @@ uint64_t vdso_gettimeofday(struct timeval *tv, struct timezone *tz)
     return gettimeofday(tv, tz);
 }
 
-rtld_global_ro g_rtldGlobalRO =
-{
-    ._dl_debug_mask = 0x0,
-    ._dl_pagesize = 4096,
-    ._dl_catch_error = dl_catch_error,
-    ._dl_lookup_symbol_x = _dl_lookup_symbol_x,
-    ._dl_open = dl_open,
-};
-
-rtld_global g_rtldGlobal =
-{
-    ._dl_nns = 1,
-    ._dl_error_catch_tsd = (void**(*)())0xbeefface,
-    ._dl_rtld_lock_recursive = rtld_lock_recursive,
-    ._dl_rtld_unlock_recursive = rtld_unlock_recursive
-};
-
-int __libc_enable_secure = 0;
-
-uint64_t tls_get_addr();
-
 const char* g_libpaths[] =
 {
-    "root/lib/x86_64-linux-gnu/",
-    "root/usr/lib/x86_64-linux-gnu/"
+    "/lib/x86_64-linux-gnu/",
+    "/usr/lib/x86_64-linux-gnu/"
 };
 
-ElfBinary::ElfBinary()
+ElfBinary::ElfBinary(Line* line)
 {
+    m_line = line;
     m_exec = NULL;
     m_base = 0x0;
     m_tlsSize = 0;
-
-#if 0
-    printf("ElfBinary::ElfBinary: g_rtldGlobal:\n");
-    printf("ElfBinary::ElfBinary:   _dl_load_lock=0x%lx\n", offsetof(rtld_global, _dl_load_lock));
-    printf("ElfBinary::ElfBinary:   _dl_rtld_lock_recursive=0x%lx\n", offsetof(rtld_global, _dl_rtld_lock_recursive));
-    printf("ElfBinary::ElfBinary:   _dl_rtld_unlock_recursive=0x%lx\n", offsetof(rtld_global, _dl_rtld_unlock_recursive));
-
-    printf("ElfBinary::ElfBinary: g_rtldGlobalRO:\n");
-    printf("ElfBinary::ElfBinary:   _dl_fpu_control=0x%lx\n", offsetof(rtld_global_ro, _dl_fpu_control));
-    //printf("ElfBinary::ElfBinary: _dl_auxv=0x%lx\n", offsetof(rtld_global_ro, _dl_auxv));
-    printf("ElfBinary::ElfBinary:   _dl_inhibit_rpath=0x%lx\n", offsetof(rtld_global_ro, _dl_inhibit_rpath));
-    printf("ElfBinary::ElfBinary:   _dl_use_load_bias=0x%lx\n", offsetof(rtld_global_ro, _dl_use_load_bias));
-    printf("ElfBinary::ElfBinary:   _dl_sysinfo=0x%lx\n", offsetof(rtld_global_ro, _dl_sysinfo));
-    printf("ElfBinary::ElfBinary:   _dl_hwcap2=0x%lx\n", offsetof(rtld_global_ro, _dl_hwcap2));
-    printf("ElfBinary::ElfBinary:   _dl_debug_printf=0x%lx\n", offsetof(rtld_global_ro, _dl_debug_printf));
-    printf("ElfBinary::ElfBinary:   _dl_catch_error=0x%lx\n", offsetof(rtld_global_ro, _dl_catch_error));
-    printf("ElfBinary::ElfBinary:   _dl_signal_error=0x%lx\n", offsetof(rtld_global_ro, _dl_signal_error));
-    printf("ElfBinary::ElfBinary:   _dl_mcount=0x%lx\n", offsetof(rtld_global_ro, _dl_mcount));
-    printf("ElfBinary::ElfBinary:   _dl_lookup_symbol_x=0x%lx\n", offsetof(rtld_global_ro, _dl_lookup_symbol_x));
-    printf("ElfBinary::ElfBinary:   _dl_open=0x%lx\n", offsetof(rtld_global_ro, _dl_open));
-#endif
 }
 
 ElfBinary::~ElfBinary()
@@ -177,7 +94,7 @@ bool ElfBinary::load(const char* path)
     fseek(fp, 0, SEEK_END);
     long size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    m_image = (char*)malloc(size);
+    m_image = (char*)(m_line->alloc(size));
     fread(m_image, 1, size, fp);
     fclose(fp);
 
@@ -525,7 +442,7 @@ bool ElfBinary::mapDynamic()
     printf("ElfBinary::mapDynamic: %s: loadMin=0x%llx, loadMax=0x%llx\n", m_path, loadMin, loadMax);
 #endif
 
-    uint64_t loadAddr = m_process->getNextLibraryLoadAddr();
+    uint64_t loadAddr = m_line->getProcess()->getNextLibraryLoadAddr();
     //if (m_process->getLine()->getConfigTrace())
     {
         printf("ElfBinary::mapDynamic: %s: loadAddr=0x%llx\n", m_path, loadAddr);
@@ -610,71 +527,88 @@ bool ElfBinary::loadLibraries()
             continue;
         }
 
-        ElfLibrary* library = m_exec->getLibrary(name);
         if (name.length() > 0)
         {
-            library = m_exec->getLibrary(name);
+            m_exec->loadLibrary(name.c_str());
         }
         else
         {
 #ifdef DEBUG
             printf("ElfBinary::loadLibraries:  -> This library???\n");
 #endif
-            library = (ElfLibrary*)this;
-        }
-#ifdef DEBUG
-        printf("ElfBinary::loadLibraries: %s:  -> library=%p\n", m_path, library);
-#endif
-
-        if (library == NULL)
-        {
-            library = new ElfLibrary(m_exec);
-            library->setProcess(m_process);
-            m_exec->addLibrary(name, library);
-
-            bool res = false;
-            int i;
-            for (i = 0; i < sizeof(g_libpaths) / sizeof(char*); i++)
-            {
-                string libpath = string(g_libpaths[i]) + name;
-#ifdef DEBUG
-                printf("ElfBinary::loadLibraries: %s: %s -> %s\n", m_path, name.c_str(), libpath.c_str());
-#endif
-
-#ifdef DEBUG
-                printf("ElfBinary::loadLibraries: %s: LOADING %s -> %s\n", m_path, name.c_str(), libpath.c_str());
-#endif
-
-                res = library->load(libpath.c_str());
-                if (res)
-                {
-                    break;
-                }
-            }
-
-            if (!res)
-            {
-                printf("ElfBinary::loadLibraries: %s: Failed to find library: %s\n", m_path, name.c_str());
-                return false;
-            }
-
-            res = library->map();
-            if (!res)
-            {
-                printf("ElfBinary::loadLibraries: %s: Failed to map library: %s\n", m_path, name.c_str());
-                return false;
-            }
-
-            res = library->loadLibraries();
-            if (!res)
-            {
-                printf("ElfBinary::loadLibraries: %s: Failed to load libraries: %s\n", m_path, name.c_str());
-                return false;
-            }
         }
     }
 
     return true;
+}
+
+ElfLibrary* ElfBinary::loadLibrary(const char* name, bool init, int argc, char** argv, char** env)
+{
+    ElfLibrary* library = m_exec->getLibrary(name);
+    if (library != NULL)
+    {
+        printf("LineProcess::loadLibrary: %s is already loaded\n", name);
+        return library;
+    }
+
+    library = new ElfLibrary(m_line, m_exec);
+    m_exec->addLibrary(name, library);
+
+    bool res = false;
+    int i;
+    for (i = 0; i < sizeof(g_libpaths) / sizeof(char*); i++)
+    {
+        string libpath = string(g_libpaths[i]) + name;
+        char* osxpath = m_line->getProcess()->getKernel()->getFileSystem()->path2osx(libpath.c_str());
+#ifdef DEBUG
+        printf("LineProcess::loadLibrary: %s -> %s -> %s\n", name, libpath.c_str(), osxpath);
+#endif
+
+        res = library->load(osxpath);
+        free(osxpath);
+        if (res)
+        {
+            break;
+        }
+    }
+
+    if (!res)
+    {
+        printf("LineProcess::loadLibrary: Failed to find library: %s\n", name);
+        return NULL;
+    }
+
+    res = library->map();
+    if (!res)
+    {
+        printf("LineProcess::loadLibrary: Failed to map library: %s\n", name);
+        return NULL;
+    }
+
+    res = library->loadLibraries();
+    if (!res)
+    {
+        printf("LineProcess::loadLibrary: Failed to load libraries: %s\n", name);
+        return NULL;
+    }
+
+    if (init)
+    {
+#ifdef DEBUG
+        printf("LineProcess::loadLibrary: %s: relocating...\n", name);
+#endif
+        library->relocate();
+        library->relocateIFuncs();
+#ifdef DEBUG
+        printf("LineProcess::loadLibrary: %s: Calling entry point...\n", name);
+#endif
+        library->entry(argc, argv, env);
+#ifdef DEBUG
+        printf("LineProcess::loadLibrary: %s: Initialised\n", name);
+#endif
+    }
+
+    return library;
 }
 
 bool ElfBinary::relocate()
@@ -715,7 +649,7 @@ bool ElfBinary::relocateIFuncs()
 
         uint64_t destaddr = rela.rela->r_offset + base;
         uint64_t* dest64 = (uint64_t*)destaddr;
-uint64_t value = 0;
+        uint64_t value = 0;
         switch (ELF64_R_TYPE(rela.rela->r_info))
         {
             case R_X86_64_IRELATIVE:
@@ -763,7 +697,7 @@ uint64_t value = 0;
                 printf(
                     "ElfBinary::relocateIFuncs: %s: R_X86_64_JUMP_SLOT: 0x%llx = 0x%llx\n",
                     m_path,
-destaddr,
+                    destaddr,
                     value);
 #endif
             } break;
@@ -1005,48 +939,8 @@ void ElfBinary::relocateRela(
         {
             if (symbolValue == 0)
             {
-                if (!strcmp(symName, "_rtld_global"))
-                {
-                    symbolValue = (uint64_t)(&g_rtldGlobal);
-#ifdef DEBUG_RELOCATE
-                    printf(
-                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> _rtld_global\n");
-#endif
-                }
-                else if (!strcmp(symName, "_rtld_global_ro"))
-                {
-                    symbolValue = (uint64_t)(&g_rtldGlobalRO);
-#ifdef DEBUG_RELOCATE
-                    printf(
-                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> _rtld_global_ro\n");
-#endif
-                }
-                else if (!strcmp(symName, "__tls_get_addr"))
-                {
-                    symbolValue = (uint64_t)(tls_get_addr);
-#ifdef DEBUG_RELOCATE
-                    printf(
-                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> __tls_get_addr\n");
-#endif
-                }
-                else if (!strcmp(symName, "_dl_find_dso_for_object"))
-                {
-                    symbolValue = (uint64_t)(dl_find_dso_for_object);
-#ifdef DEBUG_RELOCATE
-                    printf(
-                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> _dl_find_dso_for_object\n");
-#endif
-                }
-                else if (!strcmp(symName, "__libc_enable_secure"))
-                {
-                    symbolValue = (uint64_t)(&__libc_enable_secure);
-#ifdef DEBUG_RELOCATE
-                    printf(
-                        "ElfBinary::relocateRela: R_X86_64_JUMP_SLOT:  -> __libc_enable_secure\n");
-#endif
-                }
-
-
+                // See if this is provided by the Glibc Runtime
+                symbolValue = m_line->getProcess()->getRuntime()->findSymbol(symName);
             }
             if (type == R_X86_64_64)
             {

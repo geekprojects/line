@@ -22,10 +22,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
-#include <mach/task.h>
-#include <mach/mach_init.h>
-#include <mach/mach_port.h>
-#include <mach/mach_interface.h>
+#include <sys/mman.h>
 
 #include "line.h"
 #include "process.h"
@@ -37,6 +34,9 @@ Line::Line()
 {
     m_configTrace = false;
     m_configForked = false;
+
+m_heapStart = 0x50000000;
+m_heapNext = m_heapStart;
 }
 
 Line::~Line()
@@ -47,7 +47,9 @@ bool Line::open(const char* elfpath)
 {
     bool res;
 
-    res = m_elfBinary.load(elfpath);
+    void* binary = alloc(sizeof(ElfExec));
+    m_elfBinary = new (binary) ElfExec(this);
+    res = m_elfBinary->load(elfpath);
     if (!res)
     {
         return false;
@@ -58,23 +60,41 @@ bool Line::open(const char* elfpath)
 
 bool Line::execute(int argc, char** argv)
 {
-    LineProcess* process = new LineProcess(this, &m_elfBinary);
+    void* process = alloc(sizeof(LineProcess));
+    m_process = new (process) LineProcess(this, m_elfBinary);
 
     bool res;
-    res = m_elfBinary.map();
+    res = m_elfBinary->map();
     if (!res)
     {
         exit(1);
     }
 
-    res = m_elfBinary.loadLibraries();
+    res = m_elfBinary->loadLibraries();
     if (!res)
     {
         exit(1);
     }
 
-    process->start(argc, argv);
+    m_process->start(argc, argv);
 
     return true;
+}
+
+void* Line::alloc(size_t size)
+{
+    size = ALIGN(size, 4096);
+    uint64_t ptr = m_heapNext;
+    void* result = mmap((void*)ptr, size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, 0, 0);
+    int err = errno;
+    if (result == MAP_FAILED)
+    {
+        printf("Line::alloc: Failed to allocate %ld bytes. errno=%d\n", size, err);
+        exit(255);
+    }
+
+    m_heapNext += size;
+
+    return result;
 }
 

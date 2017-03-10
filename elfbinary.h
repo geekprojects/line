@@ -28,6 +28,7 @@
 
 #define ALIGN(_v, _a) (((_v) + _a - 1) & ~(_a - 1))
 
+class Line;
 class ElfExec;
 class ElfLibrary;
 class LibraryEntry;
@@ -44,7 +45,7 @@ struct IFuncRela
 class ElfBinary
 {
  protected:
-    LineProcess* m_process;
+    Line* m_line;
     ElfExec* m_exec;
 
     char* m_path;
@@ -77,7 +78,7 @@ class ElfBinary
 
  public:
 
-    ElfBinary();
+    ElfBinary(Line* line);
     virtual ~ElfBinary();
 
     bool load(const char* path);
@@ -92,10 +93,10 @@ class ElfBinary
     uint64_t getBase() { return m_base; }
 
     bool loadLibraries();
+    ElfLibrary* loadLibrary(const char* file, bool init = false, int argc = 0, char** argv = NULL, char** env = NULL);
     virtual bool relocate();
     bool relocateIFuncs();
 
-    void setProcess(LineProcess* process) { m_process = process; }
     char* getPath() { return m_path; }
 
     int getTLSSize() { return m_tlsSize; }

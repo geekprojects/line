@@ -46,22 +46,16 @@
 
 using namespace std;
 
-static LineProcess* g_elfProcess = NULL;
+static LineProcess* g_process = NULL;
 
 extern char **environ;
-
-uint64_t tls_get_addr()
-{
-    return g_elfProcess->getFSPtr();
-}
 
 LineProcess::LineProcess(Line* line, ElfExec* exec)
 {
     m_line = line;
-    g_elfProcess = this;
+    g_process = this;
 
     m_elf = exec;
-    m_elf->setProcess(this);
 
     m_kernel = new LinuxKernel(this);
 
@@ -159,13 +153,14 @@ bool LineProcess::start(int argc, char** argv)
     }
 
     int size = m_elf->getTLSSize();
-tlspos += size;
+    tlspos += size;
+
 #ifdef DEBUG_TLS
     printf("LineProcess::start: TLS: %s: size=0x%x, base=%d\n", m_elf->getPath(), size, -tlspos);
 #endif
     m_elf->setTLSBase(-tlspos);
 
-    m_fs = (uint64_t)malloc(tlssize + sizeof(struct linux_pthread));
+    m_fs = (uint64_t)m_line->alloc(tlssize + sizeof(struct linux_pthread));
     m_fsPtr = m_fs + tlssize;
 #ifdef DEBUG_TLS
     printf("LineProcess::start: TLS: FS: 0x%llx - 0x%llx\n", m_fs, m_fsPtr);
@@ -271,11 +266,11 @@ void LineProcess::signalHandler(int sig, siginfo_t* info, void* contextptr)
 
     if (sig == SIGTRAP)
     {
-        g_elfProcess->trap(info, ucontext);
+        g_process->trap(info, ucontext);
     }
     else
     {
-        g_elfProcess->error(sig, info, ucontext);
+        g_process->error(sig, info, ucontext);
     }
 }
 
@@ -320,7 +315,6 @@ void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
         info->si_addr);
     printregs(ucontext);
 
-    fflush(stdout);
     exit(1);
 }
 
@@ -343,7 +337,7 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         {
             // Line binary or kernel
 #ifdef DEBUG_OSX
-            printf("LineProcess::trap: %p: line\n", addr);
+            printf("LineProcess::trap: %p: Native\n", addr);
 #endif
             return;
         }
@@ -505,5 +499,10 @@ void LineProcess::log(const char* format, ...)
     pid_t pid = getpid();
 
     printf("%s: %d: %s\n", timeStr, pid, buf);
+}
+
+LineProcess* LineProcess::getProcess()
+{
+    return g_process;
 }
 

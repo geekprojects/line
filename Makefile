@@ -2,7 +2,7 @@
 TGT=line
 
 SUBDIRS=syscalls
-SRCS=main.cpp line.cpp process.cpp fsinstruction.cpp elfbinary.cpp elfexec.cpp elflibrary.cpp utils.cpp filesystem.cpp kernel.cpp thread.cpp mainthread.cpp
+SRCS=main.cpp line.cpp process.cpp fsinstruction.cpp elfbinary.cpp elfexec.cpp elflibrary.cpp utils.cpp filesystem.cpp kernel.cpp thread.cpp mainthread.cpp glibcruntime.cpp
 #OBJS=$(SRCS:.cpp=.o)
 
 all: TARGET=all
