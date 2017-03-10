@@ -29,6 +29,7 @@
 
 #define ALIGN(_v, _a) (((_v) + _a - 1) & ~(_a - 1))
 
+class Line;
 class ElfLibrary;
 class LibraryEntry;
 
@@ -39,7 +40,7 @@ class ElfExec : public ElfBinary
 
  public:
 
-    ElfExec();
+    ElfExec(Line* line);
     virtual ~ElfExec();
 
     void addLibrary(std::string name, ElfLibrary* library);

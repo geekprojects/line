@@ -28,6 +28,7 @@
 #include "elfexec.h"
 #include "kernel.h"
 #include "mainthread.h"
+#include "glibcruntime.h"
 
 #include <deque>
 
@@ -54,8 +55,8 @@ struct ProcessRequestSingleStep : public ProcessRequest
 class LineProcess
 {
  private:
-    Line* m_line;
     ElfExec* m_elf;
+    Line* m_line;
 
     std::map<pthread_t, LineThread*> m_threads;
     MainThread* m_mainThread;
@@ -73,6 +74,7 @@ class LineProcess
     uint8_t* m_rip;
 
     LinuxKernel* m_kernel;
+    GlibcRuntime m_glibcRuntime;
     std::map<int, LinuxSocket*> m_sockets;
     std::map<int, DIR*> m_dirs;
 
@@ -120,6 +122,8 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
 
     Line* getLine() { return m_line; }
     ElfExec* getExec() { return m_elf; }
+    LinuxKernel* getKernel() { return m_kernel; }
+    GlibcRuntime* getRuntime() { return &m_glibcRuntime; }
 
     void addThread(LineThread* thread);
     LineThread* getCurrentThread();
@@ -149,8 +153,6 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
         m_libraryLoadAddr += 0x1000000;
         return addr;
     }
-
-    bool loadLibrary(const char* file, int argc, char** argv, char** env);
 
     bool request(ProcessRequest* request);
     bool requestSingleStep(LineThread* thread, bool enable);

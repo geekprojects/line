@@ -30,6 +30,7 @@
 
 #include <string>
 
+#include "line.h"
 #include "elfexec.h"
 #include "elflibrary.h"
 #include "utils.h"
@@ -38,7 +39,7 @@ using namespace std;
 
 typedef int(*entryFunc_t)();
 
-ElfExec::ElfExec()
+ElfExec::ElfExec(Line* line) : ElfBinary(line)
 {
     m_exec = this;
 }

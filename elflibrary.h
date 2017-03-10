@@ -32,7 +32,7 @@ class ElfLibrary : public ElfBinary
  protected:
 
  public:
-    ElfLibrary(ElfExec* exec);
+    ElfLibrary(Line* line, ElfExec* exec);
     virtual ~ElfLibrary();
 
     virtual void entry(int argc, char** argv, char** envp);

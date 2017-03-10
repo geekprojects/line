@@ -25,13 +25,19 @@
 
 #include "elfexec.h"
 
+class LineProcess;
+
 class Line
 {
  private:
-    ElfExec m_elfBinary;
+    ElfExec* m_elfBinary;
+    LineProcess* m_process;
 
     bool m_configTrace;
     bool m_configForked;
+
+uint64_t m_heapStart;
+uint64_t m_heapNext;
 
  public:
     Line();
@@ -46,7 +52,10 @@ class Line
     void setConfigForked(bool v) { m_configForked = v; }
     bool getConfigForked() { return m_configForked; }
 
-    ElfExec* getElfBinary() { return &m_elfBinary; }
+    ElfExec* getElfBinary() { return m_elfBinary; }
+    LineProcess* getProcess() { return m_process; }
+
+void* alloc(size_t size);
 };
 
 

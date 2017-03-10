@@ -35,7 +35,7 @@
 
 using namespace std;
 
-ElfLibrary::ElfLibrary(ElfExec* exec)
+ElfLibrary::ElfLibrary(Line* line, ElfExec* exec) : ElfBinary(line)
 {
     m_exec = exec;
 }

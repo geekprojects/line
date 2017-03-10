@@ -1,7 +1,10 @@
 #ifndef __LINE_RTLD_H_
 #define __LINE_RTLD_H_
 
-#include <sys/stat.h>
+#include <sys/types.h>
+#include <stddef.h>
+
+#include "elf.h"
 
 typedef long int Lmid_t;
 typedef unsigned long long int hp_timing_t;
