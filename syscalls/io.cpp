@@ -259,6 +259,15 @@ SYSCALL_METHOD(ioctl)
             ucontext->uc_mcontext->__ss.__rax = 0;
         } break;
 
+        case LINUX_TIOCSWINSZ:
+        {
+            int res;
+
+            res = ioctl(fd, TIOCSWINSZ, &arg);
+            int err = errno;
+            syscallErrnoResult(ucontext, res, res >= 0, err);
+        } break;
+
         case LINUX_TIOCGPGRP:
         {
             int res;
@@ -277,6 +286,22 @@ SYSCALL_METHOD(ioctl)
             res = ioctl(fd, TIOCGPGRP, &arg);
             int err = errno;
             syscallErrnoResult(ucontext, res, res >= 0, err);
+        } break;
+
+        case LINUX_TCSETSW:
+        {
+            ucontext->uc_mcontext->__ss.__rax = 0;
+        } break;
+
+        case LINUX_VT_GETMODE:
+        {
+            linux_vt_mode* vt_mode = (linux_vt_mode*)arg;
+            vt_mode->mode = 0;
+            vt_mode->waitv = 0;
+            vt_mode->relsig = 0;
+            vt_mode->acqsig = 0;
+            vt_mode->frsig = 0;
+            ucontext->uc_mcontext->__ss.__rax = 0;
         } break;
 
         default:
@@ -349,19 +374,15 @@ SYSCALL_METHOD(dup)
 
 SYSCALL_METHOD(dup2)
 {
-    //int filedes = ucontext->uc_mcontext->__ss.__rdi;
     int newfd = ucontext->uc_mcontext->__ss.__rsi;
+    int filedes = ucontext->uc_mcontext->__ss.__rdi;
 
 #ifdef DEBUG
     log("sys_dup2: fd=%d, newfd=%d", filedes, newfd);
 #endif
 
-    int res = newfd;
-    int err = 0;
-/*
     int res = dup2(filedes, newfd);
     int err = errno;
-*/
 
 #ifdef DEBUG
     log("sys_dup2: res=%d, err=%d", res, err);
