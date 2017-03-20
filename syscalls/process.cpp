@@ -124,7 +124,7 @@ SYSCALL_METHOD(chdir)
 {
     const char* filename = (char*)(ucontext->uc_mcontext->__ss.__rdi);
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_chdir: filename=%s\n", filename);
+    log("sys_chdir: filename=%s\n", filename);
 #endif
     int res;
     res = m_fileSystem.chdir(filename);
@@ -136,11 +136,32 @@ SYSCALL_METHOD(fchdir)
 {
     int fd = ucontext->uc_mcontext->__ss.__rdi;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_fchdir: fd=%d\n", fd);
+    log("sys_fchdir: fd=%d\n", fd);
 #endif
     int res;
     res = fchdir(fd);
     syscallErrnoResult(ucontext, res, res == 0, errno);
+
+    return true;
+}
+
+SYSCALL_METHOD(chmod)
+{
+    const char* path = (const char*)(ucontext->uc_mcontext->__ss.__rdi);
+    char* osxpath = m_fileSystem.path2osx(path);
+    int mode = ucontext->uc_mcontext->__ss.__rsi;
+
+#ifdef DEBUG
+    log("sys_chmod: path=%p->%p, mode=%d\n", path, osxpath, mode);
+#endif
+    int res = chmod(osxpath, mode);
+    int err = errno;
+#ifdef DEBUG
+    log("sys_chmod: res=%d, err=%d\n", res, err);
+#endif
+    syscallErrnoResult(ucontext, res, res == 0, err);
+
+free(osxpath);
 
     return true;
 }
@@ -151,12 +172,12 @@ SYSCALL_METHOD(fchmod)
     int mode = ucontext->uc_mcontext->__ss.__rsi;
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_fchmod: fd=%d, mode=%d\n", fd, mode);
+    log("sys_fchmod: fd=%d, mode=%d\n", fd, mode);
 #endif
     int res = fchmod(fd, mode);
     int err = errno;
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_fchmod: res=%d, err=%d\n", res, err);
+    log("sys_fchmod: res=%d, err=%d\n", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res == 0, err);
 
@@ -168,13 +189,13 @@ SYSCALL_METHOD(umask)
     int mask = ucontext->uc_mcontext->__ss.__rdi;
 
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_umask: mask=%d\n", mask);
+    log("sys_umask: mask=%d\n", mask);
 #endif
 
     int res;
     res = umask(mask);
 #ifdef DEBUG
-    printf("ElfProcess::execSyscall: sys_umask: res=%d\n", res);
+    log("sys_umask: res=%d\n", res);
 #endif
     ucontext->uc_mcontext->__ss.__rax = res;
 
@@ -203,8 +224,8 @@ SYSCALL_METHOD(getrlimit)
         int res = getrlimit(resource, rlim);
         int err = errno;
 #ifdef DEBUG
-        printf("ElfProcess::execSyscall: sys_getrlimit: res=%d, err=%d\n", res, err);
-        printf("ElfProcess::execSyscall: sys_getrlimit:  -> cur=%lld, max=%lld\n", rlim->rlim_cur, rlim->rlim_max);
+        log("sys_getrlimit: res=%d, err=%d\n", res, err);
+        log("sys_getrlimit:  -> cur=%lld, max=%lld\n", rlim->rlim_cur, rlim->rlim_max);
 #endif
         syscallErrnoResult(ucontext, res, res == 0, err);
     }
@@ -239,8 +260,8 @@ SYSCALL_METHOD(arch_prctl)
     int option = ucontext->uc_mcontext->__ss.__rdi;
     uint64_t addr = (uint64_t)ucontext->uc_mcontext->__ss.__rsi;
 
-    printf("ElfProcess::execSyscall: sys_arch_prctl: option=0x%x, addr=%llx\n", option, addr);
-    printf("ElfProcess::execSyscall: sys_arch_prctl: Current: fs=0x%llx, gs=0x%llx\n", ucontext->uc_mcontext->__ss.__fs, ucontext->uc_mcontext->__ss.__gs);
+    log("sys_arch_prctl: option=0x%x, addr=%llx\n", option, addr);
+    log("sys_arch_prctl: Current: fs=0x%llx, gs=0x%llx\n", ucontext->uc_mcontext->__ss.__fs, ucontext->uc_mcontext->__ss.__gs);
 
     switch (option)
     {
@@ -252,12 +273,12 @@ SYSCALL_METHOD(arch_prctl)
         case ARCH_SET_FS:
         {
             m_process->setFS(addr, 1024);
-            printf("ElfProcess::execSyscall: sys_arch_prctl: ARCH_SET_FS=0x%llx\n", addr);
+            log("sys_arch_prctl: ARCH_SET_FS=0x%llx\n", addr);
             ucontext->uc_mcontext->__ss.__rax = 0;
         } break;
 
         case ARCH_GET_FS:
-            printf("ElfProcess::execSyscall: sys_arch_prctl: ARCH_GET_FS=0x%llx\n", m_process->getFS());
+            log("sys_arch_prctl: ARCH_GET_FS=0x%llx\n", m_process->getFS());
             ucontext->uc_mcontext->__ss.__rax = m_process->getFS();
             break;
 
@@ -279,13 +300,25 @@ SYSCALL_METHOD(exit_group)
     exit(errorCode);
 }
 
+SYSCALL_METHOD(kill)
+{
+    pid_t pid = ucontext->uc_mcontext->__ss.__rdi;
+    int sig = ucontext->uc_mcontext->__ss.__rsi;
+
+    int res = kill(pid, sig);
+    int err = errno;
+
+    syscallErrnoResult(ucontext, res, res == 0, err);
+    return true;
+}
+
 SYSCALL_METHOD(tgkill)
 {
     pid_t tgid = ucontext->uc_mcontext->__ss.__rdi;
     pid_t pid = ucontext->uc_mcontext->__ss.__rsi;
     int sig = ucontext->uc_mcontext->__ss.__rdx;
 
-    printf("ElfProcess::execSyscall: sys_tgkill: tgid=%d, pid=%d, sig=%d\n", tgid, pid, sig);
+    log("sys_tgkill: tgid=%d, pid=%d, sig=%d\n", tgid, pid, sig);
     return false;
 }
 

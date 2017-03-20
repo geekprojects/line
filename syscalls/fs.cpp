@@ -312,7 +312,7 @@ SYSCALL_METHOD(statfs)
     char* pathname = (char*)ucontext->uc_mcontext->__ss.__rdi;
     struct linux_statfs* linux_statfs = (struct linux_statfs*)(ucontext->uc_mcontext->__ss.__rsi);
 
-#ifndef DEBUG
+#ifdef DEBUG
     log("sys_statfs: pathname=%s, linux_statfs=%p", pathname, linux_statfs);
 #endif
 
@@ -323,7 +323,7 @@ SYSCALL_METHOD(statfs)
         return false;
     }
 
-#ifndef DEBUG
+#ifdef DEBUG
     log("sys_statfs: osxOldName=%s", osxPathName);
 #endif
 
@@ -349,4 +349,26 @@ SYSCALL_METHOD(statfs)
 
     return true;
 }
+
+SYSCALL_METHOD(utimes)
+{
+    char* pathname = (char*)ucontext->uc_mcontext->__ss.__rdi;
+    struct timeval* times = (struct timeval*)(ucontext->uc_mcontext->__ss.__rsi);
+
+char* osxpath = m_fileSystem.path2osx(pathname);
+
+log("sys_utimes: pathname=%s->%s, times=%p\n", pathname, osxpath, times);
+
+int res;
+res = utimes(osxpath, times);
+int err = errno;
+log("sys_utimes: res=%d, err=%d\n", res, err);
+
+    syscallErrnoResult(ucontext, res, res == 0, err);
+
+free(osxpath);
+
+    return true;
+}
+
 

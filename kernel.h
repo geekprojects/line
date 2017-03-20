@@ -32,6 +32,8 @@ class LinuxKernel
     FileSystem m_fileSystem;
     LineProcess* m_process;
 
+    FILE* m_log;
+
     std::map<int, LinuxSocket*> m_sockets;
     std::map<int, DIR*> m_dirs;
 
@@ -39,13 +41,16 @@ class LinuxKernel
 
     void syscallErrnoResult(ucontext_t* ucontext, uint64_t res, bool success, int err);
 
-    void log(const char* __format, ...);
 
  public:
     LinuxKernel(LineProcess* process);
     ~LinuxKernel();
 
+    FileSystem* getFileSystem() { return &m_fileSystem; }
+
     bool syscall(uint64_t syscall, ucontext_t* ucontext);
+
+    void log(const char* __format, ...);
 
     SYSCALL_DEFINE(notimplemented);
 
@@ -79,6 +84,7 @@ class LinuxKernel
     SYSCALL_DEFINE(clone);
     SYSCALL_DEFINE(execve);
     SYSCALL_DEFINE(wait4);
+    SYSCALL_DEFINE(kill);
     SYSCALL_DEFINE(uname);
     SYSCALL_DEFINE(fcntl);
     SYSCALL_DEFINE(fsync);
@@ -93,6 +99,7 @@ class LinuxKernel
     SYSCALL_DEFINE(link);
     SYSCALL_DEFINE(unlink);
     SYSCALL_DEFINE(readlink);
+    SYSCALL_DEFINE(chmod);
     SYSCALL_DEFINE(fchmod);
     SYSCALL_DEFINE(umask);
     SYSCALL_DEFINE(getrlimit);
@@ -118,6 +125,7 @@ class LinuxKernel
     SYSCALL_DEFINE(clock_gettime);
     SYSCALL_DEFINE(exit_group);
     SYSCALL_DEFINE(tgkill);
+    SYSCALL_DEFINE(utimes);
     SYSCALL_DEFINE(openat);
 };
 

@@ -60,7 +60,7 @@
     &LinuxKernel::sys_execve,	// 59: sys_execve const char *filename,const char *const argv[],const char *const envp[]
     &LinuxKernel::sys_notimplemented,	// 60: sys_exit int error_code
     &LinuxKernel::sys_wait4,	// 61: sys_wait4 pid_t upid,int *stat_addr,int options,struct rusage *ru
-    &LinuxKernel::sys_notimplemented,	// 62: sys_kill pid_t pid,int sig
+    &LinuxKernel::sys_kill,	// 62: sys_kill pid_t pid,int sig
     &LinuxKernel::sys_uname,	// 63: sys_uname struct old_utsname *name
     &LinuxKernel::sys_notimplemented,	// 64: sys_semget key_t key,int nsems,int semflg
     &LinuxKernel::sys_notimplemented,	// 65: sys_semop int semid,struct sembuf *tsops,unsigned nsops
@@ -88,7 +88,7 @@
     &LinuxKernel::sys_unlink,	// 87: sys_unlink const char *pathname
     &LinuxKernel::sys_notimplemented,	// 88: sys_symlink const char *oldname,const char *newname
     &LinuxKernel::sys_readlink,	// 89: sys_readlink const char *path,char *buf,int bufsiz
-    &LinuxKernel::sys_notimplemented,	// 90: sys_chmod const char *filename,mode_t mode
+    &LinuxKernel::sys_chmod,	// 90: sys_chmod const char *filename,mode_t mode
     &LinuxKernel::sys_fchmod,	// 91: sys_fchmod unsigned int fd,mode_t mode
     &LinuxKernel::sys_notimplemented,	// 92: sys_chown const char *filename,uid_t user,gid_t group
     &LinuxKernel::sys_notimplemented,	// 93: sys_fchown unsigned int fd,uid_t user,gid_t group
@@ -233,7 +233,7 @@
     &LinuxKernel::sys_notimplemented,	// 232: sys_epoll_wait int epfd,struct epoll_event *events,int maxevents,int timeout
     &LinuxKernel::sys_notimplemented,	// 233: sys_epoll_ctl int epfd,int op,int fd,struct epoll_event *event
     &LinuxKernel::sys_tgkill,	// 234: sys_tgkill pid_t tgid,pid_t pid,int sig
-    &LinuxKernel::sys_notimplemented,	// 235: sys_utimes char *filename,struct timeval *utimes
+    &LinuxKernel::sys_utimes,	// 235: sys_utimes char *filename,struct timeval *utimes
     &LinuxKernel::sys_notimplemented,	// 236: sys_vserver NOT IMPLEMENTED
     &LinuxKernel::sys_notimplemented,	// 237: sys_mbind unsigned long start,unsigned long len,unsigned long mode,unsigned long *nmask,unsigned long maxnode,unsigned flags
     &LinuxKernel::sys_notimplemented,	// 238: sys_set_mempolicy int mode,unsigned long *nmask,unsigned long maxnode

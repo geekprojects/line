@@ -15,24 +15,34 @@ syscall_t LinuxKernel::m_syscalls[] =
 LinuxKernel::LinuxKernel(LineProcess* process)
 {
     m_process = process;
+
+
+    pid_t pid = getpid();
+
+    char filename[1024];
+    sprintf(filename, "trace_%d.log", pid);
+    m_log = fopen(filename, "w");
+    fprintf(m_log, "Executable: %s\n", m_process->getExec()->getPath());
+    fflush(m_log);
 }
 
 LinuxKernel::~LinuxKernel()
 {
+    fclose(m_log);
 }
 
 bool LinuxKernel::syscall(uint64_t syscall, ucontext_t* ucontext)
 {
     if (syscall >= (sizeof(m_syscalls) / sizeof(syscall_t)))
     {
-        printf("LinuxKernel::syscall: Invalid syscall: %lld\n", syscall);
+        fprintf(m_log, "LinuxKernel::syscall: Invalid syscall: %lld\n", syscall);
         m_process->printregs(ucontext);
         exit(255);
     }
     bool res = (this->*m_syscalls[syscall])(syscall, ucontext);
     if (!res)
     {
-        printf("LinuxKernel::syscall: syscall failed: %lld\n", syscall);
+        fprintf(m_log, "LinuxKernel::syscall: syscall failed: %lld\n", syscall);
         m_process->printregs(ucontext);
         exit(255);
     }
@@ -105,6 +115,7 @@ void LinuxKernel::log(const char* format, ...)
 
     pid_t pid = getpid();
 
-    printf("%s: %d: Kernel: %s\n", timeStr, pid, buf);
+    fprintf(m_log, "%s: %d: Kernel: %s\n", timeStr, pid, buf);
+    fflush(m_log);
 }
 
