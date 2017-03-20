@@ -250,13 +250,13 @@ SYSCALL_METHOD(ioctl)
 
         case LINUX_TIOCGWINSZ:
         {
+            int res = ioctl(fd, TIOCGWINSZ, &arg);
 #ifdef DEBUG
-            log("sys_ioctl: TIOCGWINSZ");
+            winsize* ws = (winsize*)arg;
+            printf("sys_ioctl: TIOCGWINSZ: ws_rows=%d, ws_cols=%d\n", ws->ws_row, ws->ws_col);
 #endif
-            struct linux_winsize* ws = (struct linux_winsize*)arg;
-            ws->ws_row = 25;
-            ws->ws_col = 80;
-            ucontext->uc_mcontext->__ss.__rax = 0;
+            int err = errno;
+            syscallErrnoResult(ucontext, res, res >= 0, err);
         } break;
 
         case LINUX_TIOCSWINSZ:
