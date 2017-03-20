@@ -94,7 +94,7 @@ bool ElfBinary::load(const char* path)
     fseek(fp, 0, SEEK_END);
     long size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    m_image = (char*)(m_line->alloc(size));
+    m_image = (char*)(malloc(size));
     fread(m_image, 1, size, fp);
     fclose(fp);
 
@@ -361,10 +361,10 @@ bool ElfBinary::mapStatic()
                 0);
             int err = errno;
 
-            if (maddr == (void*)-1)
+            if (maddr == MAP_FAILED)
             {
                 printf("ElfBinary::mapStatic: Program Header: %d:  -> maddr=%p, errno=%d\n", i, maddr, err);
-                return 1;
+                return false;
             }
 
 #ifdef DEBUG
@@ -443,19 +443,24 @@ bool ElfBinary::mapDynamic()
 #endif
 
     uint64_t loadAddr = m_line->getProcess()->getNextLibraryLoadAddr();
-    //if (m_process->getLine()->getConfigTrace())
+    if (m_line->getConfigTrace())
     {
         printf("ElfBinary::mapDynamic: %s: loadAddr=0x%llx\n", m_path, loadAddr);
     }
 
     // Allocate a base location for this library now we know how big it is
-    m_base = (uint64_t)mmap(
+    void* base = mmap(
         (void*)loadAddr,
         loadMax,
         PROT_READ | PROT_WRITE | PROT_EXEC,
         MAP_ANON | MAP_PRIVATE,
         -1,
         0);
+    if (base == MAP_FAILED)
+    {
+        return false;
+    }
+    m_base = (uint64_t)base;
 
 #ifdef DEBUG
     printf("ElfBinary::mapDyanmic: m_base=0x%llx\n", m_base);
@@ -547,7 +552,9 @@ ElfLibrary* ElfBinary::loadLibrary(const char* name, bool init, int argc, char**
     ElfLibrary* library = m_exec->getLibrary(name);
     if (library != NULL)
     {
+#ifdef DEBUG
         printf("LineProcess::loadLibrary: %s is already loaded\n", name);
+#endif
         return library;
     }
 
@@ -1014,9 +1021,9 @@ void ElfBinary::initTLS(void* tls)
     {
         if (phdr[i].p_type == PT_TLS)
         {
-//#ifdef DEBUG
+#ifdef DEBUG
             printf("ElfBinary::initTLS: %s: Copying 0x%llx -> %p\n", m_path, phdr[i].p_vaddr + getBase(), tls);
-//#endif
+#endif
             memcpy(
                 tls,
                 (void*)(phdr[i].p_vaddr + getBase()),

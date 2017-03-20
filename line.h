@@ -36,9 +36,6 @@ class Line
     bool m_configTrace;
     bool m_configForked;
 
-uint64_t m_heapStart;
-uint64_t m_heapNext;
-
  public:
     Line();
     ~Line();
@@ -54,8 +51,6 @@ uint64_t m_heapNext;
 
     ElfExec* getElfBinary() { return m_elfBinary; }
     LineProcess* getProcess() { return m_process; }
-
-void* alloc(size_t size);
 };
 
 

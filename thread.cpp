@@ -30,7 +30,9 @@ static void* trampoline(void* args)
 
 void LineThread::start(int argc, char** argv)
 {
-    tramponlinedata* data = new tramponlinedata();
+    tramponlinedata* data;
+    data = new tramponlinedata();
+
     data->thread = this;
     data->argc = argc;
     data->argv = argv;

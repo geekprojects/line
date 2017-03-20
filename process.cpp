@@ -51,13 +51,12 @@ static LineProcess* g_process = NULL;
 extern char **environ;
 
 LineProcess::LineProcess(Line* line, ElfExec* exec)
+    : m_elf(exec), m_kernel(this)
 {
     m_line = line;
     g_process = this;
 
     m_elf = exec;
-
-    m_kernel = new LinuxKernel(this);
 
     m_libraryLoadAddr = 0x40000000;
 
@@ -94,7 +93,7 @@ bool LineProcess::start(int argc, char** argv)
     {
         envsize++;
     }
-    char** linux_environ = new char*[envsize + 2];
+    char** linux_environ = (char**)malloc(envsize + 2);
 
     int i;
     for (i = 0; i < envsize; i++)
@@ -160,7 +159,7 @@ bool LineProcess::start(int argc, char** argv)
 #endif
     m_elf->setTLSBase(-tlspos);
 
-    m_fs = (uint64_t)m_line->alloc(tlssize + sizeof(struct linux_pthread));
+    m_fs = (uint64_t)malloc(tlssize + sizeof(struct linux_pthread));
     m_fsPtr = m_fs + tlssize;
 #ifdef DEBUG_TLS
     printf("LineProcess::start: TLS: FS: 0x%llx - 0x%llx\n", m_fs, m_fsPtr);
@@ -172,6 +171,7 @@ bool LineProcess::start(int argc, char** argv)
     tlspos = m_elf->getTLSSize();
 
     void* initpos = (void*)((int64_t)m_fsPtr + m_elf->getTLSBase());
+#ifdef DEBUG_TLS
     printf(
         "LineProcess::start: TLS: %s: init: %d: %p-0x%llx, size=%d\n",
         m_elf->getPath(),
@@ -179,6 +179,7 @@ bool LineProcess::start(int argc, char** argv)
         initpos,
         (uint64_t)initpos + m_elf->getTLSSize(),
         m_elf->getTLSSize());
+#endif
     m_elf->initTLS(initpos);
 
     for (it = libs.begin(); it != libs.end(); it++)
@@ -248,7 +249,7 @@ bool LineProcess::requestLoop()
                 } break;
             }
             request->thread->signalFromProcess();
-            delete request;
+            // XXX TODO: delete request;
         }
     }
 
@@ -276,30 +277,30 @@ void LineProcess::signalHandler(int sig, siginfo_t* info, void* contextptr)
 
 void LineProcess::printregs(ucontext_t* ucontext)
 {
-    printf("rax=0x%08llx, rbx=0x%08llx, rcx=0x%08llx, rdx=0x%08llx\n",
+    m_kernel.log("rax=0x%08llx, rbx=0x%08llx, rcx=0x%08llx, rdx=0x%08llx",
         ucontext->uc_mcontext->__ss.__rax,
         ucontext->uc_mcontext->__ss.__rbx,
         ucontext->uc_mcontext->__ss.__rcx,
         ucontext->uc_mcontext->__ss.__rdx);
-    printf("rdi=0x%08llx, rsi=0x%08llx, rbp=0x%08llx, rsp=0x%08llx\n",
+    m_kernel.log("rdi=0x%08llx, rsi=0x%08llx, rbp=0x%08llx, rsp=0x%08llx",
         ucontext->uc_mcontext->__ss.__rdi,
         ucontext->uc_mcontext->__ss.__rsi,
         ucontext->uc_mcontext->__ss.__rbp,
         ucontext->uc_mcontext->__ss.__rsp);
-    printf(" r8=0x%08llx,  r9=0x%08llx, r10=0x%08llx, r11=0x%08llx\n",
+    m_kernel.log(" r8=0x%08llx,  r9=0x%08llx, r10=0x%08llx, r11=0x%08llx",
         ucontext->uc_mcontext->__ss.__r8,
         ucontext->uc_mcontext->__ss.__r9,
         ucontext->uc_mcontext->__ss.__r10,
         ucontext->uc_mcontext->__ss.__r11);
-    printf("r12=0x%08llx, r13=0x%08llx, r14=0x%08llx, r15=0x%08llx\n",
+    m_kernel.log("r12=0x%08llx, r13=0x%08llx, r14=0x%08llx, r15=0x%08llx",
         ucontext->uc_mcontext->__ss.__r12,
         ucontext->uc_mcontext->__ss.__r13,
         ucontext->uc_mcontext->__ss.__r14,
         ucontext->uc_mcontext->__ss.__r15);
-    printf("rip=0x%08llx, rflags=0x%08llx\n",
+    m_kernel.log("rip=0x%08llx, rflags=0x%08llx",
         ucontext->uc_mcontext->__ss.__rip,
         ucontext->uc_mcontext->__ss.__rflags);
-    printf(" cs=0x%08llx,  fs=0x%08llx,  gs=0x%08llx, m_fs=0x%08llx\n",
+    m_kernel.log(" cs=0x%08llx,  fs=0x%08llx,  gs=0x%08llx, m_fs=0x%08llx",
         ucontext->uc_mcontext->__ss.__cs,
         ucontext->uc_mcontext->__ss.__fs,
         ucontext->uc_mcontext->__ss.__gs,
@@ -308,8 +309,8 @@ void LineProcess::printregs(ucontext_t* ucontext)
 
 void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 {
-    log(
-        "error: sig=%d, errno=%d, address=%p\n",
+    m_kernel.log(
+        "error: sig=%d, errno=%d, address=%p",
         sig,
         info->si_errno,
         info->si_addr);
@@ -327,7 +328,7 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
         // Save ourselves a segfault
         if (addr == 0)
         {
-            log("trap: addr=%p", addr);
+            m_kernel.log("trap: addr=%p", addr);
             printregs(ucontext);
             exit(1);
         }
@@ -344,7 +345,7 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 
         if (m_line->getConfigTrace())
         {
-            log("trap: %p: 0x%x 0x%x 0x%x", addr, *addr, *(addr + 1), *(addr + 2));
+            m_kernel.log("trap: %p: 0x%x 0x%x 0x%x", addr, *addr, *(addr + 1), *(addr + 2));
         }
 
         if (*addr == 0x0f && *(addr + 1) == 0x05)
@@ -352,10 +353,10 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
             int syscall = ucontext->uc_mcontext->__ss.__rax;
 
 #ifdef DEBUG
-            log("trap: %p: SYSCALL 0x%x", info->si_addr, syscall);
+            m_kernel.log("trap: %p: SYSCALL 0x%x", info->si_addr, syscall);
 #endif
 
-            m_kernel->syscall(syscall, ucontext);
+            m_kernel.syscall(syscall, ucontext);
 
             // Skip it!
             ucontext->uc_mcontext->__ss.__rip += 2;
@@ -403,7 +404,7 @@ void LineProcess::setSingleStep(LineThread* thread, bool enable)
     if (res != 0)
     {
         int err = errno;
-        printf("Line::execute: Failed to get thread state: res=%d, err=%d\n", res, err);
+        m_kernel.log("Line::execute: Failed to get thread state: res=%d, err=%d\n", res, err);
         exit(1);
     }
 
@@ -426,7 +427,7 @@ void LineProcess::setSingleStep(LineThread* thread, bool enable)
     if (res != 0)
     {
         int err = errno;
-        printf("Line::execute: Failed to set thread state: res=%d, err=%d\n", res, err);
+        m_kernel.log("Line::execute: Failed to set thread state: res=%d, err=%d\n", res, err);
         exit(1);
     }
 }
@@ -446,16 +447,16 @@ void LineProcess::checkSingleStep()
     if (res != 0)
     {
         int err = errno;
-        printf("Line::execute: Failed to get thread state: res=%d, err=%d\n", res, err);
+        m_kernel.log("Line::execute: Failed to get thread state: res=%d, err=%d\n", res, err);
         exit(1);
     }
-    printf("checkSingleStep: rflags=0x%llx, T=%d\n", gp_regs.uts.ts64.__rflags, !!(gp_regs.uts.ts64.__rflags & X86_EFLAGS_T));
+    m_kernel.log("checkSingleStep: rflags=0x%llx, T=%d\n", gp_regs.uts.ts64.__rflags, !!(gp_regs.uts.ts64.__rflags & X86_EFLAGS_T));
 }
 
 bool LineProcess::request(ProcessRequest* request)
 {
 #ifdef DEBUG
-    printf("LineProcess::requestSingleStep: Adding request...\n");
+    m_kernel.log("LineProcess::requestSingleStep: Adding request...\n");
 #endif
 
     // Add the request to the queue
