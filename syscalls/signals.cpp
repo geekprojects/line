@@ -19,7 +19,7 @@ SYSCALL_METHOD(rt_sigaction)
     void* oact = (void*)(ucontext->uc_mcontext->__ss.__rdx);
     size_t sigsetsize = ucontext->uc_mcontext->__ss.__r10;
 
-    log("execSyscall: sys_rt_sigaction: sig=%d, act=%p, oact=%p, sigsetsize=%lu",
+    log("sys_rt_sigaction: sig=%d, act=%p, oact=%p, sigsetsize=%lu",
         sig,
         act,
         oact,
@@ -38,7 +38,7 @@ SYSCALL_METHOD(rt_sigprocmask)
     void* oset = (void*)(ucontext->uc_mcontext->__ss.__rdx);
     size_t sigsetsize = ucontext->uc_mcontext->__ss.__r10;
 
-    log("execSyscall: sys_rt_sigprocmask: how=%d, nset=%p, oset=%p, sigsetsize=%lu",
+    log("sys_rt_sigprocmask: how=%d, nset=%p, oset=%p, sigsetsize=%lu",
         how,
         nset,
         oset,
@@ -53,7 +53,7 @@ SYSCALL_METHOD(rt_sigsuspend)
 {
     void* unewset = (void*)(ucontext->uc_mcontext->__ss.__rdi);
     size_t sigsetsize = ucontext->uc_mcontext->__ss.__rsi;
-    printf("ElfProcess::execSyscall: sys_rt_sigsuspend: unewset=%p, sigsetsize=%lu\n", unewset, sigsetsize);
+    log("sys_rt_sigsuspend: unewset=%p, sigsetsize=%lu\n", unewset, sigsetsize);
     ucontext->uc_mcontext->__ss.__rax = -1;
     while(1)
     {
@@ -69,6 +69,9 @@ SYSCALL_METHOD(sigaltstack)
     linux_stack_t* linux_uoss = (linux_stack_t*)ucontext->uc_mcontext->__ss.__rsi;
     log("sys_sigaltstack: linux_uss=%p, linux_uoss=%p", linux_uss, linux_uoss);
 
+    ucontext->uc_mcontext->__ss.__rax = 0;
+
+/*
     if (linux_uss != NULL)
     {
         return false;
@@ -95,6 +98,7 @@ SYSCALL_METHOD(sigaltstack)
 
     syscallErrnoResult(ucontext, res, res == 0, err);
     log("sys_sigaltstack: res=%d, err=%d", res, err);
+*/
 
     return true;
 }
@@ -104,7 +108,9 @@ SYSCALL_METHOD(wait4)
     int upid = ucontext->uc_mcontext->__ss.__rdi;
     int* stat_addr = (int*)(ucontext->uc_mcontext->__ss.__rsi);
     int linux_options = ucontext->uc_mcontext->__ss.__rdx;
+#ifdef DEBUG
     void* rusage = (void*)ucontext->uc_mcontext->__ss.__r10;
+#endif
 
     int osx_options = 0;
     if (linux_options & LINUX_WNOHANG)
@@ -132,20 +138,23 @@ SYSCALL_METHOD(wait4)
         osx_options |= WNOWAIT;
     }
 
-//#ifdef DEBUG
-    log("execSyscall: sys_wait4: upid=%d, stat_addr=%p, options=0x%x (0x%x), rusage=%p",
+#ifdef DEBUG
+    log("sys_wait4: upid=%d, stat_addr=%p, options=0x%x (0x%x), rusage=%p",
         upid,
         stat_addr,
         linux_options,
         osx_options,
         rusage);
-//#endif
+#endif
     //ucontext->uc_mcontext->__ss.__rax = -1;
 
 
     int res = wait4(upid, stat_addr, osx_options, NULL);
     int err = errno;
+
+#ifdef DEBUG
     log("execSyscall: sys_wait4: res=%d, err=%d", res, err);
+#endif
     syscallErrnoResult(ucontext, res, res != -1, err);
 
     return true;
