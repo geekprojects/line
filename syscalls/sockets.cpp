@@ -14,34 +14,38 @@ SYSCALL_METHOD(socket)
     int type = ucontext->uc_mcontext->__ss.__rsi;
     int protocol = ucontext->uc_mcontext->__ss.__rdx;
     int osx_type = type & 0xf;
-    printf(
-        "ElfProcess::execSyscall: sys_socket: family=0x%x, type=0x%x (0x%x), protocol=0x%x\n",
+#ifdef DEBUG
+    log(
+        "sys_socket: family=0x%x, type=0x%x (0x%x), protocol=0x%x\n",
         family,
         type,
         osx_type,
         protocol);
+#endif
     if (family != 1)
     {
-        printf("ElfProcess::execSyscall: sys_socket: Unsupported family=0x%x\n", family);
+        log("sys_socket: Unsupported family=0x%x\n", family);
         return false;
     }
 
     if (osx_type != 1)
     {
-        printf("ElfProcess::execSyscall: sys_socket: Unsupported PF_UNIX type=0x%x\n", osx_type);
+        log("sys_socket: Unsupported PF_UNIX type=0x%x\n", osx_type);
         return false;
     }
 
     if (protocol != 0)
     {
-        printf("ElfProcess::execSyscall: sys_socket: Unsupported PF_UNIX protocol=0x%x\n", protocol);
+        log("sys_socket: Unsupported PF_UNIX protocol=0x%x\n", protocol);
         return false;
     }
 
     int res;
     res = socket(family, osx_type, protocol);
     int err = errno;
-    printf("ElfProcess::execSyscall: sys_socket: res=%d, err=%d\n", res, err);
+#ifdef DEBUG
+    log("sys_socket: res=%d, err=%d\n", res, err);
+#endif
     syscallErrnoResult(ucontext, res, res != -1, err);
 
     if (res != -1)
@@ -63,11 +67,13 @@ SYSCALL_METHOD(connect)
     void* addr = (void*)(ucontext->uc_mcontext->__ss.__rsi);
     int addrlen = ucontext->uc_mcontext->__ss.__rdx;
 
-    printf(
-        "ElfProcess::execSyscall: sys_connect: fd=%d, addr=%p, addrlen=%d\n",
+#ifdef DEBUG
+    log(
+        "sys_connect: fd=%d, addr=%p, addrlen=%d\n",
         fd,
         addr,
         addrlen);
+#endif
 
     map<int, LinuxSocket*>::iterator it = m_sockets.find(fd);
     if (it != m_sockets.end())
@@ -76,22 +82,22 @@ SYSCALL_METHOD(connect)
 
         if (socket->family != PF_UNIX)
         {
-            printf(
-                "ElfProcess::execSyscall: sys_connect: Unexpected socket family: %d\n",
+            log(
+                "sys_connect: Unexpected socket family: %d\n",
                 socket->family);
             return false;
         }
         if (addrlen != sizeof(linux_sockaddr_un))
         {
-            printf(
-                "ElfProcess::execSyscall: sys_connect: Unexpected addrlen: %d\n",
+            log(
+                "sys_connect: Unexpected addrlen: %d\n",
                 addrlen);
             return false;
         }
         linux_sockaddr_un* linux_sockaddr = (linux_sockaddr_un*)addr;
-        printf(
-            "ElfProcess::execSyscall: sys_connect: path: %s\n",
-            linux_sockaddr->sun_path);
+#ifdef DEBUG
+        log("sys_connect: path: %s\n", linux_sockaddr->sun_path);
+#endif
 
         sockaddr_un osx_sockaddr;
         osx_sockaddr.sun_len = addrlen;
@@ -100,13 +106,15 @@ SYSCALL_METHOD(connect)
 
         int res = connect(fd, (sockaddr*)&osx_sockaddr, sizeof(osx_sockaddr));
         int err = errno;
-        printf("ElfProcess::execSyscall: sys_connect: res=%d, err=%d\n", res, err);
+#ifdef DEBUG
+        log("sys_connect: res=%d, err=%d\n", res, err);
+#endif
         syscallErrnoResult(ucontext, res, res == 0, err);
     }
     else
     {
-        printf(
-            "ElfProcess::execSyscall: sys_connect: Unable to find socket for fd: %d\n",
+        log(
+            "sys_connect: Unable to find socket for fd: %d\n",
             fd);
     }
     return true;

@@ -10,7 +10,7 @@
 GlibcRuntime::GlibcRuntime()
 {
     memset(&m_rtldGlobalRO, 0, sizeof(m_rtldGlobalRO));
-    m_rtldGlobalRO._dl_debug_mask = 0xffff;
+    m_rtldGlobalRO._dl_debug_mask = 0;
     m_rtldGlobalRO._dl_pagesize = 4096;
     m_rtldGlobalRO._dl_catch_error = GlibcRuntime::dl_catch_error;
     m_rtldGlobalRO._dl_lookup_symbol_x = GlibcRuntime::dl_lookup_symbol_x;
@@ -88,7 +88,9 @@ void* GlibcRuntime::dl_open(
     char *argv[],
     char *env[])
 {
+#ifdef DEBUG
     printf("GlibcRuntime::dl_open: file=%s, argc=%d, argv=%p, env=%p\n", file, argc, argv, env);
+#endif
     ElfLibrary* lib = LineProcess::getProcess()->getExec()->loadLibrary(file, true, argc, argv, env);
     if (lib == NULL)
     {
@@ -108,7 +110,9 @@ int GlibcRuntime::dl_catch_error(
     void (*operate) (void *),
     void *args)
 {
+#ifdef DEBUG
     printf("GlibcRuntime::dl_catch_error: objname=%p, errstring=%p\n", objname, errstring);
+#endif
     (*operate)(args);
     return 0;
 }
@@ -122,12 +126,18 @@ uint64_t GlibcRuntime::dl_lookup_symbol_x(
     int, int,
     struct link_map *)
 {
+#ifdef DEBUG
     printf("GlibcRuntime::dl_lookup_symbol_x: symname=%s, handle=%p\n", symname, handle);
+#endif
     link_map* map = (link_map*)handle;
     ElfLibrary* library = (ElfLibrary*)(map->l_addr);
+#ifdef DEBUG
     printf("GlibcRuntime::dl_lookup_symbol_x: library=%s\n", library->getPath());
+#endif
     *symbol = library->findSymbol(symname);
+#ifdef DEBUG
     printf("GlibcRuntime::dl_lookup_symbol_x: symbol=%p\n", symbol);
+#endif
     if (*symbol == NULL)
     {
         return 0;

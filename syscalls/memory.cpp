@@ -118,7 +118,7 @@ SYSCALL_METHOD(brk)
         uint64_t newbrk = ALIGN(brkarg, 4096);
         uint64_t len = newbrk - currentBrk;
 #ifdef DEBUG
-        log("execSyscall: sys_brk: newbrk=0x%llx, len=%llx", newbrk, len);
+        log("execSyscall: sys_brk: currentBrk=0x%llx, newbrk=0x%llx, len=%llx", currentBrk, newbrk, len);
 #endif
         void* maddr = mmap((void*)currentBrk, len,
             PROT_READ | PROT_WRITE | PROT_EXEC,
