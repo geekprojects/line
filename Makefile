@@ -11,7 +11,6 @@ all: $(TGT)
 include common.mk
 
 $(TGT): $(OBJS) subdirs
-	ld -arch x86_64 -macosx_version_min 10.12.0 $(ALL_OBJS) -o $(TGT) -lc -image_base $(IMAGE_BASE) -pagezero_size 0x1000 -no_pie -framework CoreFoundation -lc++ 
-
+	ld -arch x86_64 -macosx_version_min 10.12.0 $(ALL_OBJS) -o $(TGT) -lc -image_base $(IMAGE_BASE) -pagezero_size 0x1000 -no_pie -framework CoreFoundation -lc++ -segaddr LINE_EXEC 0x800000
 
 

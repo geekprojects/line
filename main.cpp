@@ -22,11 +22,18 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <sys/mman.h>
+#include <mach/vm_map.h>
+#include <mach/mach_init.h>
+#include <malloc/malloc.h>
 
 #include <getopt.h>
 
 #include "line.h"
 #include "filesystem.h"
+
+__asm__(".zerofill LINE_EXEC, LINE_EXEC");
+char __line_exec[0x800000] __attribute__((section("LINE_EXEC, LINE_EXEC")));
 
 static const struct option g_options[] =
 {
@@ -39,6 +46,27 @@ static const struct option g_options[] =
 int main(int argc, char** argv)
 {
     Line line;
+
+/*
+    void* ptr = malloc(16);
+    printf("line: ptr=%p\n", ptr);
+
+    malloc_zone_print(NULL, true);
+
+    printf("Unmapping reserved regions...\n");
+    munmap((void*)0x800000, 0x800000);
+    printf("Done!\n");
+    fflush(stdout);
+*/
+/*
+int vmres = vm_deallocate(mach_task_self(), 0x0, 0x100000000);
+printf("vmres=%d\n", vmres);
+*/
+
+/*
+int mres = munmap((void*)0x1000, 0x100000000 - 0x1000);
+printf("munmap res=%d\n", mres);
+*/
 
 const char* execopt = NULL;
 

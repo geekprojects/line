@@ -1,5 +1,5 @@
 
-IMAGE_BASE=0xff000000
+IMAGE_BASE=0x100000000
 
 SUBDIR_TGT=subdir.o
 
@@ -11,7 +11,7 @@ CXXFLAGS=-O3
 #CXXFLAGS=-DDEBUG -O2
 
 subdirs:
-	for dir in $(SUBDIRS) ; do \
+	for dir in $(SUBDIRS) $(EXTRA_SUBDIRS) ; do \
 	    $(MAKE) -C $$dir $(TARGET); res=$$?; \
 	    if test $$res != 0 ; then exit $$res; fi; \
 	done;
