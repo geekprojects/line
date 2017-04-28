@@ -24,6 +24,8 @@
 #include <signal.h>
 #include <dirent.h>
 
+#include <libdis.h>
+
 #include "line.h"
 #include "elfexec.h"
 #include "kernel.h"
@@ -52,6 +54,26 @@ struct ProcessRequestSingleStep : public ProcessRequest
     bool enable;
 };
 
+enum PatchType
+{
+    PATCH_CALL,
+    PATCH_SYSCALL,
+    PATCH_FS
+};
+
+struct Patch
+{
+    PatchType type;
+    x86_insn_t insn;
+    uint8_t patchedByte;
+};
+
+struct PatchRange
+{
+    uint64_t start;
+    uint64_t end;
+};
+
 class LineProcess
 {
  private:
@@ -73,16 +95,17 @@ class LineProcess
 
     uint8_t* m_rip;
 
+    std::map<uint64_t, Patch> m_patches;
+    std::vector<PatchRange*> m_patchRanges;
+
     LinuxKernel m_kernel;
     GlibcRuntime m_glibcRuntime;
-    std::map<int, LinuxSocket*> m_sockets;
-    std::map<int, DIR*> m_dirs;
 
     static void signalHandler(int sig, siginfo_t* info, void* contextptr);
     void trap(siginfo_t* info, ucontext_t* ucontext);
     void error(int sig, siginfo_t* info, ucontext_t* ucontext);
 
-    bool execFSInstruction(uint8_t* rip, ucontext_t* ucontext);
+    bool execFSInstruction(uint8_t* rip, uint8_t firstByte, ucontext_t* ucontext);
 
     uint8_t fetch8();
     uint32_t fetch32();
@@ -115,6 +138,7 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
         *ptr = value;
     }
 
+    void patch(PatchType type, x86_insn_t insn, uint64_t pos);
 
  public:
     LineProcess(Line* line, ElfExec* exec);
@@ -161,6 +185,9 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
 
     void printregs(ucontext_t* ucontext);
     void log(const char* __format, ...);
+
+    bool patchCode(uint64_t ptr);
+    bool patched(uint64_t ptr);
 
     static LineProcess* getProcess();
 };

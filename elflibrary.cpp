@@ -53,6 +53,9 @@ void ElfLibrary::entry(int argc, char** argv, char** envp)
     {
         entry += getBase();
         initFunc_t initFunc = (initFunc_t)entry;
+
+        m_line->getProcess()->patchCode(entry);
+
         initFunc(argc, argv, envp);
     }
 
@@ -72,6 +75,7 @@ void ElfLibrary::entry(int argc, char** argv, char** envp)
             if (initArray[i] != 0)
             {
                 initFunc_t initFunc = (initFunc_t)initArray[i];
+                m_line->getProcess()->patchCode((uint64_t)initFunc);
                 initFunc(argc, argv, envp);
             }
         }

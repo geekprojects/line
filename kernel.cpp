@@ -104,6 +104,11 @@ void LinuxKernel::log(const char* format, ...)
     va_list va;
     va_start(va, format);
 
+    logv(format, va);
+}
+
+void LinuxKernel::logv(const char* format, va_list va)
+{
     char buf[4096];
     vsnprintf(buf, 4096, format, va);
     char timeStr[256];

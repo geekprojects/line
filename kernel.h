@@ -51,6 +51,7 @@ class LinuxKernel
     bool syscall(uint64_t syscall, ucontext_t* ucontext);
 
     void log(const char* __format, ...);
+    void logv(const char* __format, va_list ap);
 
     SYSCALL_DEFINE(notimplemented);
 

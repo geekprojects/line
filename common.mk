@@ -24,7 +24,7 @@ clean: subdirs
 	rm -rf $(OBJS) $(TGT)
 
 .cpp.o:
-	gcc -c -Wall -Werror -I. -I$(TOP) $(CXXFLAGS) -DIMAGE_BASE=$(IMAGE_BASE) $<
+	gcc -c -Wall -Werror -I. -I$(TOP) -I/usr/local/include $(CXXFLAGS) -DIMAGE_BASE=$(IMAGE_BASE) $<
 
 
 

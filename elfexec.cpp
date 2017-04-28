@@ -34,6 +34,7 @@
 #include "elfexec.h"
 #include "elflibrary.h"
 #include "utils.h"
+#include "process.h"
 
 using namespace std;
 
@@ -106,10 +107,6 @@ void ElfExec::relocateLibrariesIFuncs()
                                                 NULL
 */
 
-static void exitfunction()
-{
-}
-
 void ElfExec::entry(int argc, char** argv, char** envp)
 {
     uint64_t entry = m_header->e_entry + getBase();
@@ -152,11 +149,13 @@ void ElfExec::entry(int argc, char** argv, char** envp)
 
     *(stackpos++) = AT_NULL;
 
+    m_line->getProcess()->patchCode(entry);
+
     asm volatile (
         "movq %0, %%rsp\n"
         "movq %2, %%rdx\n"
         "jmpq *%1\n"
-        : : "r" (stack), "r" (entry), "r" (exitfunction) : "rdx", "rsp"
+        : : "r" (stack), "r" (entry), "r" ((void*)0) : "rdx", "rsp"
     );
 }
 

@@ -33,6 +33,8 @@
 #include <mach/mach_port.h>
 #include <mach/mach_interface.h>
 
+#include <libdis.h>
+
 #include "process.h"
 #include "elflibrary.h"
 #include "kernel.h"
@@ -43,6 +45,19 @@
 //#define DEBUG_TLS
 
 #define X86_EFLAGS_T 0x100UL
+
+#define INS_EXEC        0x1000
+#define INS_SYSTEM      0xE000
+#define INS_OTHER       0xF000
+
+#define INS_BRANCH   (INS_EXEC | 0x01)    /* Unconditional branch */
+#define INS_BRANCHCC (INS_EXEC | 0x02)    /* Conditional branch */
+#define INS_CALL     (INS_EXEC | 0x03)    /* Jump to subroutine */
+#define INS_RET      (INS_EXEC | 0x05)    /* Return from subroutine */
+
+#define INS_SYSCALL    (INS_SYSTEM | 0x05)    /* system call */
+
+#define INS_NOP         (INS_OTHER | 0x01)
 
 using namespace std;
 
@@ -59,6 +74,8 @@ LineProcess::LineProcess(Line* line, ElfExec* exec)
     m_elf = exec;
 
     m_libraryLoadAddr = 0x40000000;
+
+    x86_init(opt_64_bit, NULL, NULL);
 
     init();
 }
@@ -319,58 +336,201 @@ void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
     exit(1);
 }
 
+static uint64_t getRegister(x86_reg_t reg, ucontext_t* ucontext)
+{
+    switch (reg.id)
+    {
+        case 0: return 0;
+        case 1: return ucontext->uc_mcontext->__ss.__rax;
+        case 2: return ucontext->uc_mcontext->__ss.__rcx;
+        case 3: return ucontext->uc_mcontext->__ss.__rdx;
+        case 4: return ucontext->uc_mcontext->__ss.__rbx;
+        case 5: return ucontext->uc_mcontext->__ss.__rsp;
+        case 6: return ucontext->uc_mcontext->__ss.__rbp;
+        case 97: return ucontext->uc_mcontext->__ss.__r8;
+        case 98: return ucontext->uc_mcontext->__ss.__r9;
+        case 99: return ucontext->uc_mcontext->__ss.__r10;
+        case 101: return ucontext->uc_mcontext->__ss.__r12;
+        case 102: return ucontext->uc_mcontext->__ss.__r13;
+        case 103: return ucontext->uc_mcontext->__ss.__r14;
+        case 104: return ucontext->uc_mcontext->__ss.__r15;
+        default:
+            //log("patchCode: 0x%llx: %s: Unhandled register: %d", patchedAddr, insntype, target->data.reg.id);
+            printf("getregister: Unhandled register: %s, id=%d\n", reg.name, reg.id);
+            exit(255);
+            break;
+    }
+}
+
 void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 {
-    while (true)
+    uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip);
+    //log("LineProcess::trap: %p: Trapped!", addr);
+    if (addr[-1] != 0xcc)
     {
-        uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip);
+        log("LineProcess::trap: %p: ERROR: Trap in non patched code");
+        exit(255);
+    }
 
-        // Save ourselves a segfault
-        if (addr == 0)
-        {
-            m_kernel.log("trap: addr=%p", addr);
-            printregs(ucontext);
-            exit(1);
-        }
-        else if (
-            ((uint64_t)addr >= IMAGE_BASE && (uint64_t)addr <= (IMAGE_BASE + 0xffffff)) ||
-            ((uint64_t)addr >= 0x7fff00000000))
-        {
-            // Line binary or kernel
-#ifdef DEBUG_OSX
-            printf("LineProcess::trap: %p: Native\n", addr);
-#endif
-            return;
-        }
+    uint64_t patchedAddr = ucontext->uc_mcontext->__ss.__rip - 1;
+    map<uint64_t, Patch>::iterator it;
+    it = m_patches.find(patchedAddr);
+    if (it == m_patches.end())
+    {
+        log("LineProcess::trap: Invalid patch!?");
+        exit(255);
+    }
+    Patch patch = it->second;
 
-        if (m_line->getConfigTrace())
-        {
-            m_kernel.log("trap: %p: 0x%x 0x%x 0x%x", addr, *addr, *(addr + 1), *(addr + 2));
-        }
+    //log("LineProcess::trap: type=%d", patch.type);
 
-        if (*addr == 0x0f && *(addr + 1) == 0x05)
+    switch (patch.type)
+    {
+        case PATCH_CALL:
+        {
+            const char* insntype;
+            if (patch.insn.type == INS_BRANCH || patch.insn.type == INS_BRANCHCC)
+            {
+                insntype = "BRANCH";
+            }
+            else
+            {
+                insntype = "CALL";
+            }
+
+            x86_op_t* target = x86_get_branch_target(&(patch.insn));
+            if (target->datatype == op_byte )
+            {
+                log("LineProcess::trap: 0x%llx: NEAR patched call/jmp!?", patchedAddr);
+                exit(255);
+            }
+
+            // FAR !
+            uint64_t targetAddr = 0;
+bool fixedTarget = false;
+
+            // If a BRANCH, treat this like a RET, this is the end unless we have a JMP to a point after this
+            //uint64_t addr = x86_get_address(target);
+            log("LineProcess::trap:: 0x%llx: %s: FAR: op=%p, type=%d", patchedAddr, insntype, target, target->type);
+
+            switch (target->type)
+            {
+                case op_register:
+                    log("LineProcess::trap: 0x%llx: %s: register: %d", patchedAddr, insntype, target->data.reg.id);
+                    targetAddr = getRegister(target->data.reg, ucontext);
+                    log("LineProcess::trap: 0x%llx: %s: register: targetAddr=0x%llx", patchedAddr, insntype, targetAddr);
+                    break;
+                case op_relative_far:
+                    targetAddr = patch.insn.addr + target->data.relative_far + patch.insn.size;
+                    fixedTarget = true;
+                    log("LineProcess::trap: 0x%llx: %s: Relative FAR: 0x%llx", patchedAddr, insntype, targetAddr);
+                    break;
+                case op_expression:
+                    log("LineProcess::trap: 0x%llx: %s: scale=%d, index=%s (%d), base=%s, disp=%d",
+                        patchedAddr,
+                        insntype,
+                        target->data.expression.scale,
+                        target->data.expression.index.name,
+                        target->data.expression.index.type,
+                        target->data.expression.base.name,
+                        target->data.expression.disp);
+                    if (target->data.expression.scale == 0 &&
+                        target->data.expression.index.type == 0 &&
+                        target->data.expression.base.type == reg_pc &&
+                        target->data.expression.disp != 0)
+                    {
+                        uint64_t* ea = (uint64_t*)(patch.insn.addr + patch.insn.size + target->data.expression.disp);
+
+                        log("LineProcess::trap: 0x%llx: %s: Relative to IP, ea: %p", patchedAddr, insntype, ea);
+                        targetAddr = *ea;
+                        log("LineProcess::trap: 0x%llx: %s: Relative to IP, value: 0x%llx", patchedAddr, insntype, targetAddr);
+                        fixedTarget = true;
+                    }
+                    else
+                    {
+                        int64_t index = getRegister(target->data.expression.index, ucontext);
+                        int64_t base = getRegister(target->data.expression.base, ucontext);
+
+                        log("LineProcess::trap: 0x%llx: %s: index=0x%llx, base=0x%llx", patchedAddr, insntype, index, base);
+                        uint64_t* ea = (uint64_t*)(targetAddr = base + (index * target->data.expression.scale) + target->data.expression.disp);
+                        log("LineProcess::trap: 0x%llx: %s: ea=0x%llx", patchedAddr, insntype, ea);
+                        targetAddr = *ea;
+                        log("LineProcess::trap: 0x%llx: %s: targetAddr=0x%llx", patchedAddr, insntype, targetAddr);
+//exit(255);
+                    }
+                    break;
+
+                default:
+                    log("LineProcess::trap: 0x%llx: %s: Unhandled type: %d", patchedAddr, insntype, target->type);
+                    exit(255);
+            }
+
+            if (targetAddr == 0)
+            {
+                log("LineProcess::trap: 0x%llx: %s: targetAddr is 0!", patchedAddr, insntype);
+                exit(255);
+            }
+
+            bool isPatched = patched(targetAddr);
+            log("LineProcess::trap: PATCH_CALL: targetAddr=0x%llx, isPatched=%d", targetAddr, isPatched);
+            if (!isPatched)
+            {
+                patchCode(targetAddr);
+            }
+            if (fixedTarget)
+            {
+                *((uint8_t*)patchedAddr) = patch.patchedByte;
+                ucontext->uc_mcontext->__ss.__rip--;
+            }
+            else
+            {
+                ucontext->uc_mcontext->__ss.__rip = targetAddr;
+                if (patch.insn.type == INS_BRANCH)
+                {
+                }
+                else if (patch.insn.type == INS_BRANCHCC)
+                {
+                    log("LineProcess::trap: PATCH_CALL: A BRANCHCC without a fixed target!?");
+
+                    exit(255);
+                }
+                else
+                {
+                    // Push the return address on to the stack
+                    ucontext->uc_mcontext->__ss.__rsp -= 8;
+
+                    uint64_t* stack = (uint64_t*)ucontext->uc_mcontext->__ss.__rsp;
+                    uint64_t returnAddr = patch.insn.addr + patch.insn.size;
+                    *stack = returnAddr;
+                    log("LineProcess::trap: PATCH_CALL: Calling a non fixed address!");
+//exit(255);
+                }
+            }
+        } break;
+
+        case PATCH_SYSCALL:
         {
             int syscall = ucontext->uc_mcontext->__ss.__rax;
-
 #ifdef DEBUG
-            m_kernel.log("trap: %p: SYSCALL 0x%x", info->si_addr, syscall);
+            log("LineProcess::trap: PATCH_SYSCALL: Syscall: %lld",  syscall);
 #endif
-
             m_kernel.syscall(syscall, ucontext);
 
             // Skip it!
-            ucontext->uc_mcontext->__ss.__rip += 2;
-        }
-        else if (*addr == 0x64)
-        {
-            execFSInstruction(addr + 1, ucontext);
-        }
-        else
-        {
-            break;
-        }
+            ucontext->uc_mcontext->__ss.__rip++;
+        } break;
 
-        // Better check that we don't need to handle the next instruction too
+        case PATCH_FS:
+        {
+#ifdef DEBUG
+            log("LineProcess::trap: PATCH_FS");
+#endif
+            execFSInstruction((uint8_t*)(patchedAddr + 1), patch.patchedByte, ucontext);
+        } break;
+
+        default:
+            log("LineProcess::trap: Unhandled patch type: type=%d", patch.type);
+            exit(255);
     }
 }
 
@@ -488,6 +648,8 @@ void LineProcess::log(const char* format, ...)
     va_list va;
     va_start(va, format);
 
+    m_kernel.logv(format, va);
+/*
     char buf[4096];
     vsnprintf(buf, 4096, format, va);
     char timeStr[256];
@@ -499,11 +661,174 @@ void LineProcess::log(const char* format, ...)
 
     pid_t pid = getpid();
 
-    printf("%s: %d: %s\n", timeStr, pid, buf);
+    //printf("%s: %d: %s\n", timeStr, pid, buf);
+*/
 }
 
 LineProcess* LineProcess::getProcess()
 {
     return g_process;
+}
+
+bool LineProcess::patchCode(uint64_t start)
+{
+    uint64_t end = 0;
+    uint64_t ptr = start;
+
+    if (
+        (start >= IMAGE_BASE && start <= (IMAGE_BASE + 0xffffff)) ||
+        (start >= 0x700000000000))
+    {
+        // Line binary or kernel
+        return true;
+    }
+    if (patched(ptr))
+    {
+        log("patchCode: Code is already patched: 0x%llx", ptr);
+        return true;
+    }
+
+    log("patchCode: Start: 0x%llx", ptr);
+
+    PatchRange* range = new PatchRange();
+    range->start = ptr;
+    range->end = ptr + 1;
+    m_patchRanges.push_back(range);
+
+    while (true)
+    {
+        uint8_t* p = (uint8_t*)ptr;
+        if (*p == 0xcc)
+        {
+            log("patchCode: found patch instruction! Abort!!");
+            return false;
+        }
+
+        x86_insn_t insn;
+        int size = 0;
+
+        size = x86_disasm((unsigned char*)ptr, 0x10000, ptr, 0, &insn );
+        if (size <= 0)
+        {
+            log("0x%llx: Invalid instruction", ptr);
+            exit(255);
+            return false;
+        }
+
+        range->end = ptr;
+
+#if 0
+        char line[4096];
+        //int i;
+
+        if (x86_format_insn(&insn, line, 4096, att_syntax) <= 0 )
+        {
+            log("0x%x: Unable to format instruction", ptr);
+            exit(255);
+            return false;
+        }
+
+        log("0x%llx: %s", ptr, line);
+#endif
+
+        if (insn.type == INS_RET)
+        {
+            if (end < ptr)
+            {
+                log("patchCode: %p: Found end of function");
+                break;
+            }
+        }
+        else if (insn.type == INS_SYSCALL)
+        {
+#ifdef DEBUG_PATCH
+            log("patchCode: 0x%llx: Patching SYSCALL", ptr);
+#endif
+            patch(PATCH_SYSCALL, insn, ptr);
+        }
+        else if (insn.type == INS_BRANCH || insn.type == INS_BRANCHCC|| insn.type == INS_CALL)
+        {
+            const char* insntype;
+            if (insn.type == INS_BRANCH || insn.type == INS_BRANCHCC)
+            {
+                insntype = "BRANCH";
+            }
+            else
+            {
+                insntype = "CALL";
+            }
+
+            //log("patchCode: 0x%llx: %s: operand_count=%d", ptr, insntype, insn.operand_count);
+            x86_op_t* target = x86_get_branch_target(&insn);
+            if (target->datatype != op_byte )
+            {
+                // FAR !
+#ifdef DEBUG_PATCH
+                log("patchCode: 0x%llx:  -> Patching %s...", ptr, insntype);
+#endif
+                patch(PATCH_CALL, insn, ptr);
+
+                if (insn.type == INS_BRANCH && end < ptr)
+                {
+                    break;
+                }
+            }
+            else
+            {
+                uint64_t destAddr = insn.addr + insn.size + target->data.sbyte;
+#ifdef DEBUG_PATCH
+                log("patchCode: 0x%llx: %s: near branch to 0x%llx", ptr, insntype, destAddr);
+#endif
+                if (end < destAddr)
+                {
+                    end = destAddr;
+                }
+                else if (p[size] == 0 && p[size + 1] == 0)
+                {
+                    log("patchCode: FUNCTION END??");
+                    break;
+                }
+            }
+        }
+        else if (insn.prefix & op_fs_seg)
+        {
+            if (insn.type != INS_NOP)
+            {
+                log("patchCode: 0x%llx: Patching FS instruction", ptr);
+                patch(PATCH_FS, insn, ptr);
+            }
+        }
+
+        ptr += size;
+    }
+
+    log("patchCode: Patched range: 0x%llx-0x%llx", start, ptr);
+
+    return true;
+}
+
+void LineProcess::patch(PatchType type, x86_insn_t insn, uint64_t pos)
+{
+    uint8_t* p = (uint8_t*)pos;
+    uint8_t original = *p;
+    *p = 0xcc;
+    Patch patch;
+    patch.type = type;
+    patch.insn = insn;
+    patch.patchedByte = original;
+    m_patches.insert(make_pair(pos, patch));
+}
+
+bool LineProcess::patched(uint64_t ptr)
+{
+    std::vector<PatchRange*>::iterator it;
+    for (it = m_patchRanges.begin(); it != m_patchRanges.end(); it++)
+    {
+        if ((*it)->start >= ptr && (*it)->end <= ptr)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
