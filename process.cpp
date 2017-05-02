@@ -43,6 +43,7 @@
 
 //#define DEBUG
 //#define DEBUG_TLS
+#define DEBUG_PATCH
 
 #define X86_EFLAGS_T 0x100UL
 
@@ -103,6 +104,11 @@ bool LineProcess::start(int argc, char** argv)
     act.sa_sigaction = LineProcess::signalHandler;
     act.sa_flags = SA_SIGINFO;
     sigaction(SIGSEGV, &act, 0);
+
+    memset (&act, 0, sizeof(act));
+    act.sa_sigaction = LineProcess::signalHandler;
+    act.sa_flags = SA_SIGINFO;
+    sigaction(SIGILL, &act, 0);
 
     // Set the environment
     int envsize = 0;
@@ -333,6 +339,11 @@ void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
         info->si_addr);
     printregs(ucontext);
 
+    if (!patched(ucontext->uc_mcontext->__ss.__rip))
+    {
+        m_kernel.log("Failed in unpatched code!");
+    }
+
     exit(1);
 }
 
@@ -347,6 +358,7 @@ static uint64_t getRegister(x86_reg_t reg, ucontext_t* ucontext)
         case 4: return ucontext->uc_mcontext->__ss.__rbx;
         case 5: return ucontext->uc_mcontext->__ss.__rsp;
         case 6: return ucontext->uc_mcontext->__ss.__rbp;
+        case 7: return ucontext->uc_mcontext->__ss.__rsi;
         case 97: return ucontext->uc_mcontext->__ss.__r8;
         case 98: return ucontext->uc_mcontext->__ss.__r9;
         case 99: return ucontext->uc_mcontext->__ss.__r10;
@@ -465,9 +477,9 @@ bool fixedTarget = false;
                     exit(255);
             }
 
-            if (targetAddr == 0)
+            if (targetAddr < 1024)
             {
-                log("LineProcess::trap: 0x%llx: %s: targetAddr is 0!", patchedAddr, insntype);
+                log("LineProcess::trap: 0x%llx: %s: targetAddr is in zero page!", patchedAddr, insntype);
                 exit(255);
             }
 
@@ -477,6 +489,7 @@ bool fixedTarget = false;
             {
                 patchCode(targetAddr);
             }
+
             if (fixedTarget)
             {
                 *((uint8_t*)patchedAddr) = patch.patchedByte;
@@ -502,8 +515,7 @@ bool fixedTarget = false;
                     uint64_t* stack = (uint64_t*)ucontext->uc_mcontext->__ss.__rsp;
                     uint64_t returnAddr = patch.insn.addr + patch.insn.size;
                     *stack = returnAddr;
-                    log("LineProcess::trap: PATCH_CALL: Calling a non fixed address!");
-//exit(255);
+                    log("LineProcess::trap: PATCH_CALL: Calling a non fixed address: returnAddr=%p", returnAddr);
                 }
             }
         } break;
@@ -691,8 +703,8 @@ bool LineProcess::patchCode(uint64_t start)
     log("patchCode: Start: 0x%llx", ptr);
 
     PatchRange* range = new PatchRange();
-    range->start = ptr;
-    range->end = ptr + 1;
+    range->start = start;
+    range->end = start + 1;
     m_patchRanges.push_back(range);
 
     while (true)
@@ -715,7 +727,7 @@ bool LineProcess::patchCode(uint64_t start)
             return false;
         }
 
-        range->end = ptr;
+        range->end = ptr + size;
 
 #if 0
         char line[4096];
@@ -735,7 +747,9 @@ bool LineProcess::patchCode(uint64_t start)
         {
             if (end < ptr)
             {
+#ifdef DEBUG_PATCH
                 log("patchCode: %p: Found end of function");
+#endif
                 break;
             }
         }
@@ -783,6 +797,20 @@ bool LineProcess::patchCode(uint64_t start)
                 {
                     end = destAddr;
                 }
+                else if (destAddr < start)
+                {
+#ifdef DEBUG_PATCH
+                    log("patchCode: Jump to 0x%llx is before this range");
+#endif
+                    bool isPatched = patched(destAddr);
+#ifdef DEBUG_PATCH
+                    log("patchCode:  -> isPatched=%d", isPatched);
+#endif
+                    if (!isPatched)
+                    {
+                        patchCode(destAddr);
+                    }
+                }
                 else if (p[size] == 0 && p[size + 1] == 0)
                 {
                     log("patchCode: FUNCTION END??");
@@ -824,7 +852,8 @@ bool LineProcess::patched(uint64_t ptr)
     std::vector<PatchRange*>::iterator it;
     for (it = m_patchRanges.begin(); it != m_patchRanges.end(); it++)
     {
-        if ((*it)->start >= ptr && (*it)->end <= ptr)
+        PatchRange* range = *it;
+        if (ptr >= range->start && ptr < range->end)
         {
             return true;
         }
