@@ -25,33 +25,37 @@
 
 #include "process.h"
 
-//#define DEBUG
+#define DEBUG
 
 #define FETCH_NEXT() *(m_rip++)
 #define FETCH_MODRM() {uint8_t modrm = FETCH_NEXT(); mod = (modrm >> 6) & 0x3; rm = modrm & 7; reg = (modrm >> 3) & 7; }
 
-bool LineProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
+bool LineProcess::execFSInstruction(uint8_t* rip, uint8_t firstByte,  ucontext_t* ucontext)
 {
     m_rip = rip;
-
-    uint8_t next = FETCH_NEXT();
 
     bool rexW = false;
     bool rexR = false;
     bool rexX = false;
     bool rexB = false;
 
-    if ((next & 0xf0) == 0x40)
-    {
-        rexW = (next >> 3) & 1;
-        rexR = (next >> 2) & 1;
-        rexX = (next >> 1) & 1;
-        rexB = (next >> 0) & 1;
+    uint8_t next = firstByte;
 
-        next = FETCH_NEXT();
+    // Handle any prefixes
+    while (((next & 0xf0) == 0x40) || next == 0x64)
+    {
+        if ((next & 0xf0) == 0x40)
+        {
+            rexW = (next >> 3) & 1;
+            rexR = (next >> 2) & 1;
+            rexX = (next >> 1) & 1;
+            rexB = (next >> 0) & 1;
+
 #ifdef DEBUG
-        printf("LineProcess::execFSInstruction: %p: -> REX prefix: W=%d, R=%d, X=%d, B=%d\n", rip, rexW, rexR, rexX, rexB);
+            log("execFSInstruction: %p: -> REX prefix: W=%d, R=%d, X=%d, B=%d", rip, rexW, rexR, rexX, rexB);
 #endif
+        }
+        next = FETCH_NEXT();
     }
 
     int mod = 0;
@@ -65,8 +69,8 @@ bool LineProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
             FETCH_MODRM();
             int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
 #ifdef DEBUG
-            printf(
-                "LineProcess::execFSInstruction: %p: ADD: %%fs:0x%llx, r%d\n",
+            log(
+                "execFSInstruction: %p: ADD: %%fs:0x%llx, r%d",
                 rip,
                 addr,
                 reg);
@@ -74,8 +78,8 @@ bool LineProcess::execFSInstruction(uint8_t* rip, ucontext_t* ucontext)
             uint64_t value1 = readFS64(addr);
             uint64_t value2 = readRegister(reg, rexR, 32, ucontext);
 #ifdef DEBUG
-            printf(
-                "LineProcess::execFSInstruction: %p: ADD: modrm:  value1=0x%llx, value2=0x%llx\n",
+            log(
+                "execFSInstruction: %p: ADD: modrm:  value1=0x%llx, value2=0x%llx",
 rip,
                 value1,
                 value2);
@@ -89,7 +93,7 @@ rip,
             int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
 
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: %p: XOR: %%fs:0x%llx, r%d\n", rip, addr, reg);
+            log("execFSInstruction: %p: XOR: %%fs:0x%llx, r%d", rip, addr, reg);
 #endif
 
             uint64_t value1 = readFS64(addr);
@@ -103,11 +107,11 @@ rip,
 */
 
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: %p: XOR %%fs:0x%llx(0x%llx), reg%d(0x%llx)\n", rip, addr, value1, reg, value2);
+            log("execFSInstruction: %p: XOR %%fs:0x%llx(0x%llx), reg%d(0x%llx)", rip, addr, value1, reg, value2);
 #endif
             value1 ^= value2;
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: %p: XOR  -> 0x%llx\n", rip, value1);
+            log("execFSInstruction: %p: XOR  -> 0x%llx", rip, value1);
 #endif
 
             // TODO: Set more flags!
@@ -124,7 +128,7 @@ rip,
         {
             FETCH_MODRM();
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: %p: Arithmetic: modrm: mod=%x, rm=%x, reg=%x\n", rip, mod, rm, reg);
+            log("execFSInstruction: %p: Arithmetic: modrm: mod=%x, rm=%x, reg=%x", rip, mod, rm, reg);
 #endif
             int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
             switch (reg)
@@ -135,7 +139,7 @@ rip,
                     int8_t cmpValue = fetch8();
                     int64_t fsValue = readFS64(addr);
 #ifdef DEBUG
-                    printf("LineProcess::execFSInstruction: %p: CMP $0x%x, fs:0x%llx: %d - %lld\n", rip, cmpValue, addr, cmpValue, fsValue);
+                    log("execFSInstruction: %p: CMP $0x%x, fs:0x%llx: %d - %lld", rip, cmpValue, addr, cmpValue, fsValue);
 #endif
 
                     ucontext->uc_mcontext->__ss.__rflags &= ~(EFL_CF | EFL_PF | EFL_SF);
@@ -147,14 +151,14 @@ rip,
                     }
                     else
                     {
-                        printf("LineProcess::execFSInstruction: CMP: Unhandled comparison! diff=%d\n", diff);
+                        log("execFSInstruction: CMP: Unhandled comparison! diff=%d", diff);
 //exit(0);
                     }
 
                 } break;
 
                 default:
-                    printf("LineProcess::execFSInstruction: Unhandled op: reg=0x%x\n", reg);
+                    log("execFSInstruction: Unhandled op: reg=0x%x", reg);
                     exit(1);
             }
         } break;
@@ -165,12 +169,12 @@ rip,
             int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
 
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: MOV: r%d, %%fs:0x%llx\n", reg, addr);
+            log("execFSInstruction: MOV: r%d, %%fs:0x%llx", reg, addr);
 #endif
 
             uint64_t value = readRegister(reg, rexR, 32, ucontext);
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: mov %%reg(%d = 0x%llx), %%fs:0x%llx (%lld)\n", reg, value, addr, addr);
+            log("execFSInstruction: mov %%reg(%d = 0x%llx), %%fs:0x%llx (%lld)", reg, value, addr, addr);
 #endif
             writeFS64((int)addr, value);
         } break;
@@ -182,12 +186,12 @@ rip,
             int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
 
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: %p: MOV(8b): %%fs:0x%llx, r%d\n", rip, addr, reg);
+            log("execFSInstruction: %p: MOV(8b): %%fs:0x%llx, r%d", rip, addr, reg);
 #endif
             uint64_t value = readFS64(addr);
 
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: %p: MOV(8b): MOV %%fs:%lld (0x%llx), r%d\n", rip, addr, value, reg);
+            log("execFSInstruction: %p: MOV(8b): MOV %%fs:%lld (0x%llx), r%d", rip, addr, value, reg);
 #endif
             writeRegister(reg, rexR, 64, value, ucontext);
         } break;
@@ -196,22 +200,22 @@ rip,
         {
             FETCH_MODRM();
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: modrm: mod=%x, rm=%x, reg=%x\n", mod, rm, reg);
+            log("execFSInstruction: modrm: mod=%x, rm=%x, reg=%x", mod, rm, reg);
 #endif
             int64_t addr = fetchModRMAddress(mod, rm, rexB, ucontext);
 
             int32_t value = fetch32();
 #ifdef DEBUG
-            printf("LineProcess::execFSInstruction: value=0x%x\n", value);
+            log("execFSInstruction: value=0x%x", value);
 
-            printf("LineProcess::execFSInstruction: MOV $0x%x, fs:(addr=0x%lld)\n", value, addr);
+            log("execFSInstruction: MOV $0x%x, fs:(addr=0x%lld)", value, addr);
 #endif
 
             writeFS64(addr, value);
         } break;
 
         default:
-            printf("LineProcess::execFSInstruction: Unhandled opcode: 0x%x\n", next);
+            log("execFSInstruction: Unhandled opcode: 0x%x", next);
             exit(1);
     }
 
@@ -223,7 +227,7 @@ rip,
 uint64_t LineProcess::fetchModRMAddress(int mod, int rm, int rexB, ucontext_t* ucontext)
 {
 #ifdef DEBUG
-    printf("LineProcess::fetchModRMAddress: mod=%d, rm=%d, rexB=%d\n", mod, rm, rexB);
+    log("fetchModRMAddress: mod=%d, rm=%d, rexB=%d", mod, rm, rexB);
 #endif
     int64_t value = 0;
     if (rm == 0x4)
@@ -234,7 +238,7 @@ uint64_t LineProcess::fetchModRMAddress(int mod, int rm, int rexB, ucontext_t* u
     {
         value = readRegister(rm, rexB, 64, ucontext);
 #ifdef DEBUG
-        printf("LineProcess::fetchModRMAddress: value=0x%llx\n", value);
+        log("fetchModRMAddress: value=0x%llx", value);
 #endif
     }
     switch (mod)
@@ -248,7 +252,7 @@ uint64_t LineProcess::fetchModRMAddress(int mod, int rm, int rexB, ucontext_t* u
             value += fetch32();
             break;
         default:
-            printf("LineProcess::fetchModRMAddress: Unhandled Mod: 0x%x\n", mod);
+            log("fetchModRMAddress: Unhandled Mod: 0x%x", mod);
             exit(1);
             break;
     }
@@ -262,7 +266,7 @@ uint64_t LineProcess::fetchSIB(int rexB, ucontext_t* ucontext)
     int index = (sib >> 3) & 7;
     int scale = (sib >> 5) & 3;
 #ifdef DEBUG
-    //printf("LineProcess::fetchSIB: sib=0x%x, base=%d, index=%d, scale=%d\n", sib, base, index, scale);
+    //log("fetchSIB: sib=0x%x, base=%d, index=%d, scale=%d", sib, base, index, scale);
 #endif
     uint64_t value = 0;
     if (base != 5)
@@ -274,7 +278,7 @@ uint64_t LineProcess::fetchSIB(int rexB, ucontext_t* ucontext)
         value = fetch32();
     }
 #ifdef DEBUG
-    //printf("LineProcess::fetchSIB: Base value: 0x%llx\n", value);
+    //log("fetchSIB: Base value: 0x%llx", value);
 #endif
 
     uint64_t indexValue = 0;
@@ -288,11 +292,11 @@ uint64_t LineProcess::fetchSIB(int rexB, ucontext_t* ucontext)
     }
     indexValue *= scale;
 #ifdef DEBUG
-    //printf("LineProcess::fetchSIB: Index value: 0x%llx\n", indexValue);
+    //log("fetchSIB: Index value: 0x%llx", indexValue);
 #endif
     if (indexValue != 0)
     {
-        printf("LineProcess::fetchSIB: TODO: indexValue is not 0\n");
+        log("fetchSIB: TODO: indexValue is not 0 (%d)", indexValue);
         exit(0);
     }
     return value;
@@ -388,7 +392,7 @@ uint64_t LineProcess::readRegister(int reg, int rexB, int size, ucontext_t* ucon
         }
     }
 #ifdef DEBUG
-    printf("LineProcess::readRegister: reg=%s\n", regname);
+    //log("readRegister: reg=%s", regname);
 #endif
 
     bool neg = (value >> 63);
@@ -507,7 +511,7 @@ void LineProcess::writeRegister(int reg, int rexB, int size, uint64_t value, uco
         }
     }
 #ifdef DEBUG
-        printf("LineProcess::writeRegister: %s\n", regname);
+        //log("writeRegister: %s", regname);
 #endif
 }
 

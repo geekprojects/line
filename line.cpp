@@ -30,7 +30,7 @@
 
 #define X86_EFLAGS_T 0x100UL
 
-Line::Line()
+Line::Line() : Logger("Line")
 {
     m_configTrace = false;
     m_configForked = false;

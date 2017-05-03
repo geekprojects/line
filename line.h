@@ -24,10 +24,11 @@
 #include <pthread.h>
 
 #include "elfexec.h"
+#include "logger.h"
 
 class LineProcess;
 
-class Line
+class Line : Logger
 {
  private:
     ElfExec* m_elfBinary;

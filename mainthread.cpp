@@ -18,7 +18,7 @@ MainThread::~MainThread()
 void MainThread::entry(int argc, char** argv)
 {
     map<string, ElfLibrary*> libs = m_process->getExec()->getLibraries();
-    singleStep(true);
+    //singleStep(true);
 
     m_process->getExec()->relocateLibrariesIFuncs();
 

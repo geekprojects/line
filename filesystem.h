@@ -1,9 +1,11 @@
 #ifndef __LINE_FILESYSTEM_H_
 #define __LINE_FILESYSTEM_H_
 
+#include "logger.h"
+
 #include <string>
 
-class FileSystem
+class FileSystem : Logger
 {
  private:
 

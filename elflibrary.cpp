@@ -53,13 +53,16 @@ void ElfLibrary::entry(int argc, char** argv, char** envp)
     {
         entry += getBase();
         initFunc_t initFunc = (initFunc_t)entry;
+
+        m_line->getProcess()->patchCode(entry);
+
         initFunc(argc, argv, envp);
     }
 
     uint64_t* initArray = (uint64_t*)(getDynValue(DT_INIT_ARRAY) + getBase());
     uint64_t initArraySize = getDynValue(DT_INIT_ARRAYSZ);
 #ifdef DEBUG
-    printf("ElfLibrary::entry: initArray=%p, initArraySize=%lld\n", initArray, initArraySize);
+    log("ElfLibrary::entry: initArray=%p, initArraySize=%lld", initArray, initArraySize);
 #endif
     if (initArray != NULL)
     {
@@ -67,11 +70,12 @@ void ElfLibrary::entry(int argc, char** argv, char** envp)
         for (i = 0; i < initArraySize / 8; i++)
         {
 #ifdef DEBUG
-            printf("ElfLibrary::entry:  -> 0x%llx\n", initArray[i]);
+            log("ElfLibrary::entry:  -> 0x%llx", initArray[i]);
 #endif
             if (initArray[i] != 0)
             {
                 initFunc_t initFunc = (initFunc_t)initArray[i];
+                m_line->getProcess()->patchCode((uint64_t)initFunc);
                 initFunc(argc, argv, envp);
             }
         }
