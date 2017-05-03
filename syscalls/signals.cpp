@@ -70,8 +70,7 @@ SYSCALL_METHOD(sigaltstack)
     log("sys_sigaltstack: linux_uss=%p, linux_uoss=%p", linux_uss, linux_uoss);
 
     ucontext->uc_mcontext->__ss.__rax = 0;
-
-/*
+#if 0
     if (linux_uss != NULL)
     {
         return false;
@@ -83,9 +82,11 @@ SYSCALL_METHOD(sigaltstack)
 
     if (res == 0)
     {
+log("sys_sigaltstack: sp=%p, size=%d", osx_uoss.ss_sp, osx_uoss.ss_size);
         linux_uoss->ss_sp = osx_uoss.ss_sp;
         linux_uoss->ss_size = osx_uoss.ss_size;
         linux_uoss->ss_flags = 0;
+/*
         if (osx_uoss.ss_flags & SS_ONSTACK)
         {
             linux_uoss->ss_flags |= LINUX_SS_ONSTACK;
@@ -94,11 +95,14 @@ SYSCALL_METHOD(sigaltstack)
         {
             linux_uoss->ss_flags |= LINUX_SS_DISABLE;
         }
+*/
     }
 
     syscallErrnoResult(ucontext, res, res == 0, err);
     log("sys_sigaltstack: res=%d, err=%d", res, err);
-*/
+#else
+    ucontext->uc_mcontext->__ss.__rax = 1;
+#endif
 
     return true;
 }

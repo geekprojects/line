@@ -2,9 +2,11 @@
 #define __LINE_GLIBC_RUNTIME_H_
 
 #include <stdint.h>
-#include "rtld.h"
 
-class GlibcRuntime
+#include "rtld.h"
+#include "logger.h"
+
+class GlibcRuntime : Logger
 {
  private:
     rtld_global_ro m_rtldGlobalRO;

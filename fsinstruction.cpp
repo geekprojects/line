@@ -266,7 +266,7 @@ uint64_t LineProcess::fetchSIB(int rexB, ucontext_t* ucontext)
     int index = (sib >> 3) & 7;
     int scale = (sib >> 5) & 3;
 #ifdef DEBUG
-    //printf("LineProcess::fetchSIB: sib=0x%x, base=%d, index=%d, scale=%d\n", sib, base, index, scale);
+    //log("fetchSIB: sib=0x%x, base=%d, index=%d, scale=%d", sib, base, index, scale);
 #endif
     uint64_t value = 0;
     if (base != 5)
@@ -278,7 +278,7 @@ uint64_t LineProcess::fetchSIB(int rexB, ucontext_t* ucontext)
         value = fetch32();
     }
 #ifdef DEBUG
-    //printf("LineProcess::fetchSIB: Base value: 0x%llx\n", value);
+    //log("fetchSIB: Base value: 0x%llx", value);
 #endif
 
     uint64_t indexValue = 0;
@@ -292,11 +292,11 @@ uint64_t LineProcess::fetchSIB(int rexB, ucontext_t* ucontext)
     }
     indexValue *= scale;
 #ifdef DEBUG
-    //printf("LineProcess::fetchSIB: Index value: 0x%llx\n", indexValue);
+    //log("fetchSIB: Index value: 0x%llx", indexValue);
 #endif
     if (indexValue != 0)
     {
-        printf("LineProcess::fetchSIB: TODO: indexValue is not 0\n");
+        log("fetchSIB: TODO: indexValue is not 0 (%d)", indexValue);
         exit(0);
     }
     return value;
@@ -392,7 +392,7 @@ uint64_t LineProcess::readRegister(int reg, int rexB, int size, ucontext_t* ucon
         }
     }
 #ifdef DEBUG
-    //printf("LineProcess::readRegister: reg=%s\n", regname);
+    //log("readRegister: reg=%s", regname);
 #endif
 
     bool neg = (value >> 63);
@@ -511,7 +511,7 @@ void LineProcess::writeRegister(int reg, int rexB, int size, uint64_t value, uco
         }
     }
 #ifdef DEBUG
-        //printf("LineProcess::writeRegister: %s\n", regname);
+        //log("writeRegister: %s", regname);
 #endif
 }
 

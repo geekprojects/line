@@ -67,7 +67,7 @@ static LineProcess* g_process = NULL;
 extern char **environ;
 
 LineProcess::LineProcess(Line* line, ElfExec* exec)
-    : m_elf(exec), m_kernel(this)
+    : Logger("Process"), m_elf(exec), m_kernel(this)
 {
     m_line = line;
     g_process = this;
@@ -148,7 +148,7 @@ bool LineProcess::start(int argc, char** argv)
     }
 
 #ifdef DEBUG_TLS
-    printf("LineProcess::start: TLS: Total size: %d\n", tlssize);
+    log("start: TLS: Total size: %d", tlssize);
 #endif
 
     /*
@@ -170,7 +170,7 @@ bool LineProcess::start(int argc, char** argv)
         tlspos += size;
         rit->second->setTLSBase(-tlspos);
 #ifdef DEBUG_TLS
-        printf("LineProcess::start: TLS: %s: size=0x%x, pos=%d\n", rit->first.c_str(), size, -tlspos);
+        log("start: TLS: %s: size=0x%x, pos=%d", rit->first.c_str(), size, -tlspos);
 #endif
     }
 
@@ -178,14 +178,14 @@ bool LineProcess::start(int argc, char** argv)
     tlspos += size;
 
 #ifdef DEBUG_TLS
-    printf("LineProcess::start: TLS: %s: size=0x%x, base=%d\n", m_elf->getPath(), size, -tlspos);
+    log("start: TLS: %s: size=0x%x, base=%d", m_elf->getPath(), size, -tlspos);
 #endif
     m_elf->setTLSBase(-tlspos);
 
     m_fs = (uint64_t)malloc(tlssize + sizeof(struct linux_pthread));
     m_fsPtr = m_fs + tlssize;
 #ifdef DEBUG_TLS
-    printf("LineProcess::start: TLS: FS: 0x%llx - 0x%llx\n", m_fs, m_fsPtr);
+    log("start: TLS: FS: 0x%llx - 0x%llx", m_fs, m_fsPtr);
 #endif
 
     m_elf->relocateLibraries();
@@ -195,8 +195,8 @@ bool LineProcess::start(int argc, char** argv)
 
     void* initpos = (void*)((int64_t)m_fsPtr + m_elf->getTLSBase());
 #ifdef DEBUG_TLS
-    printf(
-        "LineProcess::start: TLS: %s: init: %d: %p-0x%llx, size=%d\n",
+    log(
+        "start: TLS: %s: init: %d: %p-0x%llx, size=%d",
         m_elf->getPath(),
         m_elf->getTLSBase(),
         initpos,
@@ -210,8 +210,13 @@ bool LineProcess::start(int argc, char** argv)
         void* initpos = (void*)((int64_t)m_fsPtr + it->second->getTLSBase());
 #ifdef DEBUG_TLS
         int size = it->second->getTLSSize();
-        printf(
-            "LineProcess::start: TLS: %s: %d: init: %p-0x%llx, size=%d\n", it->first.c_str(), it->second->getTLSBase(), initpos, (uint64_t)initpos + size, size);
+        log(
+            "start: TLS: %s: %d: init: %p-0x%llx, size=%d",
+            it->first.c_str(),
+            it->second->getTLSBase(),
+            initpos,
+            (uint64_t)initpos + size,
+            size);
 #endif
         it->second->initTLS(initpos);
     }
@@ -226,14 +231,14 @@ bool LineProcess::start(int argc, char** argv)
     pthread->tid = tid;
 
 #ifdef DEBUG
-    printf("LineProcess::start: pthread pid=%p\n", &(pthread->pid));
-    printf("LineProcess::start: pthread tid=%p\n", &(pthread->tid));
+    log("start: pthread pid=%p", &(pthread->pid));
+    log("start: pthread tid=%p", &(pthread->tid));
 #endif
 
     writeFS64(0, m_fsPtr);
 
 #ifdef DEBUG
-    printf("LineProcess::start: Starting main thread...\n");
+    log("start: Starting main thread...");
 #endif
 
     m_mainThread = new MainThread(this);
@@ -259,7 +264,7 @@ bool LineProcess::requestLoop()
         }
         pthread_mutex_unlock(&m_requestMutex);
 #ifdef DEBUG
-        printf("LineProcess::start: request: %p\n", request);
+        log("start: request: %p", request);
 #endif
         if (hasRequest)
         {
@@ -300,30 +305,30 @@ void LineProcess::signalHandler(int sig, siginfo_t* info, void* contextptr)
 
 void LineProcess::printregs(ucontext_t* ucontext)
 {
-    m_kernel.log("rax=0x%08llx, rbx=0x%08llx, rcx=0x%08llx, rdx=0x%08llx",
+    log("rax=0x%08llx, rbx=0x%08llx, rcx=0x%08llx, rdx=0x%08llx",
         ucontext->uc_mcontext->__ss.__rax,
         ucontext->uc_mcontext->__ss.__rbx,
         ucontext->uc_mcontext->__ss.__rcx,
         ucontext->uc_mcontext->__ss.__rdx);
-    m_kernel.log("rdi=0x%08llx, rsi=0x%08llx, rbp=0x%08llx, rsp=0x%08llx",
+    log("rdi=0x%08llx, rsi=0x%08llx, rbp=0x%08llx, rsp=0x%08llx",
         ucontext->uc_mcontext->__ss.__rdi,
         ucontext->uc_mcontext->__ss.__rsi,
         ucontext->uc_mcontext->__ss.__rbp,
         ucontext->uc_mcontext->__ss.__rsp);
-    m_kernel.log(" r8=0x%08llx,  r9=0x%08llx, r10=0x%08llx, r11=0x%08llx",
+    log(" r8=0x%08llx,  r9=0x%08llx, r10=0x%08llx, r11=0x%08llx",
         ucontext->uc_mcontext->__ss.__r8,
         ucontext->uc_mcontext->__ss.__r9,
         ucontext->uc_mcontext->__ss.__r10,
         ucontext->uc_mcontext->__ss.__r11);
-    m_kernel.log("r12=0x%08llx, r13=0x%08llx, r14=0x%08llx, r15=0x%08llx",
+    log("r12=0x%08llx, r13=0x%08llx, r14=0x%08llx, r15=0x%08llx",
         ucontext->uc_mcontext->__ss.__r12,
         ucontext->uc_mcontext->__ss.__r13,
         ucontext->uc_mcontext->__ss.__r14,
         ucontext->uc_mcontext->__ss.__r15);
-    m_kernel.log("rip=0x%08llx, rflags=0x%08llx",
+    log("rip=0x%08llx, rflags=0x%08llx",
         ucontext->uc_mcontext->__ss.__rip,
         ucontext->uc_mcontext->__ss.__rflags);
-    m_kernel.log(" cs=0x%08llx,  fs=0x%08llx,  gs=0x%08llx, m_fs=0x%08llx",
+    log(" cs=0x%08llx,  fs=0x%08llx,  gs=0x%08llx, m_fs=0x%08llx",
         ucontext->uc_mcontext->__ss.__cs,
         ucontext->uc_mcontext->__ss.__fs,
         ucontext->uc_mcontext->__ss.__gs,
@@ -332,7 +337,7 @@ void LineProcess::printregs(ucontext_t* ucontext)
 
 void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 {
-    m_kernel.log(
+    log(
         "error: sig=%d, errno=%d, address=%p",
         sig,
         info->si_errno,
@@ -341,13 +346,13 @@ void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 
     if (!patched(ucontext->uc_mcontext->__ss.__rip))
     {
-        m_kernel.log("Failed in unpatched code!");
+        log("Failed in unpatched code!");
     }
 
     exit(1);
 }
 
-static uint64_t getRegister(x86_reg_t reg, ucontext_t* ucontext)
+uint64_t LineProcess::getRegister(x86_reg_t reg, ucontext_t* ucontext)
 {
     switch (reg.id)
     {
@@ -368,7 +373,7 @@ static uint64_t getRegister(x86_reg_t reg, ucontext_t* ucontext)
         case 104: return ucontext->uc_mcontext->__ss.__r15;
         default:
             //log("patchCode: 0x%llx: %s: Unhandled register: %d", patchedAddr, insntype, target->data.reg.id);
-            printf("getregister: Unhandled register: %s, id=%d\n", reg.name, reg.id);
+            log("getregister: Unhandled register: %s, id=%d", reg.name, reg.id);
             exit(255);
             break;
     }
@@ -377,10 +382,10 @@ static uint64_t getRegister(x86_reg_t reg, ucontext_t* ucontext)
 void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 {
     uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip);
-    //log("LineProcess::trap: %p: Trapped!", addr);
+    //log("trap: %p: Trapped!", addr);
     if (addr[-1] != 0xcc)
     {
-        log("LineProcess::trap: %p: ERROR: Trap in non patched code");
+        log("trap: %p: ERROR: Trap in non patched code");
         exit(255);
     }
 
@@ -389,12 +394,12 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
     it = m_patches.find(patchedAddr);
     if (it == m_patches.end())
     {
-        log("LineProcess::trap: Invalid patch!?");
+        log("trap: Invalid patch!?");
         exit(255);
     }
     Patch patch = it->second;
 
-    //log("LineProcess::trap: type=%d", patch.type);
+    //log("trap: type=%d", patch.type);
 
     switch (patch.type)
     {
@@ -413,7 +418,7 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
             x86_op_t* target = x86_get_branch_target(&(patch.insn));
             if (target->datatype == op_byte )
             {
-                log("LineProcess::trap: 0x%llx: NEAR patched call/jmp!?", patchedAddr);
+                log("trap: 0x%llx: NEAR patched call/jmp!?", patchedAddr);
                 exit(255);
             }
 
@@ -423,22 +428,22 @@ bool fixedTarget = false;
 
             // If a BRANCH, treat this like a RET, this is the end unless we have a JMP to a point after this
             //uint64_t addr = x86_get_address(target);
-            log("LineProcess::trap:: 0x%llx: %s: FAR: op=%p, type=%d", patchedAddr, insntype, target, target->type);
+            log("trap:: 0x%llx: %s: FAR: op=%p, type=%d", patchedAddr, insntype, target, target->type);
 
             switch (target->type)
             {
                 case op_register:
-                    log("LineProcess::trap: 0x%llx: %s: register: %d", patchedAddr, insntype, target->data.reg.id);
+                    log("trap: 0x%llx: %s: register: %d", patchedAddr, insntype, target->data.reg.id);
                     targetAddr = getRegister(target->data.reg, ucontext);
-                    log("LineProcess::trap: 0x%llx: %s: register: targetAddr=0x%llx", patchedAddr, insntype, targetAddr);
+                    log("trap: 0x%llx: %s: register: targetAddr=0x%llx", patchedAddr, insntype, targetAddr);
                     break;
                 case op_relative_far:
                     targetAddr = patch.insn.addr + target->data.relative_far + patch.insn.size;
                     fixedTarget = true;
-                    log("LineProcess::trap: 0x%llx: %s: Relative FAR: 0x%llx", patchedAddr, insntype, targetAddr);
+                    log("trap: 0x%llx: %s: Relative FAR: 0x%llx", patchedAddr, insntype, targetAddr);
                     break;
                 case op_expression:
-                    log("LineProcess::trap: 0x%llx: %s: scale=%d, index=%s (%d), base=%s, disp=%d",
+                    log("trap: 0x%llx: %s: scale=%d, index=%s (%d), base=%s, disp=%d",
                         patchedAddr,
                         insntype,
                         target->data.expression.scale,
@@ -453,9 +458,9 @@ bool fixedTarget = false;
                     {
                         uint64_t* ea = (uint64_t*)(patch.insn.addr + patch.insn.size + target->data.expression.disp);
 
-                        log("LineProcess::trap: 0x%llx: %s: Relative to IP, ea: %p", patchedAddr, insntype, ea);
+                        log("trap: 0x%llx: %s: Relative to IP, ea: %p", patchedAddr, insntype, ea);
                         targetAddr = *ea;
-                        log("LineProcess::trap: 0x%llx: %s: Relative to IP, value: 0x%llx", patchedAddr, insntype, targetAddr);
+                        log("trap: 0x%llx: %s: Relative to IP, value: 0x%llx", patchedAddr, insntype, targetAddr);
                         fixedTarget = true;
                     }
                     else
@@ -463,28 +468,28 @@ bool fixedTarget = false;
                         int64_t index = getRegister(target->data.expression.index, ucontext);
                         int64_t base = getRegister(target->data.expression.base, ucontext);
 
-                        log("LineProcess::trap: 0x%llx: %s: index=0x%llx, base=0x%llx", patchedAddr, insntype, index, base);
+                        log("trap: 0x%llx: %s: index=0x%llx, base=0x%llx", patchedAddr, insntype, index, base);
                         uint64_t* ea = (uint64_t*)(targetAddr = base + (index * target->data.expression.scale) + target->data.expression.disp);
-                        log("LineProcess::trap: 0x%llx: %s: ea=0x%llx", patchedAddr, insntype, ea);
+                        log("trap: 0x%llx: %s: ea=0x%llx", patchedAddr, insntype, ea);
                         targetAddr = *ea;
-                        log("LineProcess::trap: 0x%llx: %s: targetAddr=0x%llx", patchedAddr, insntype, targetAddr);
+                        log("trap: 0x%llx: %s: targetAddr=0x%llx", patchedAddr, insntype, targetAddr);
 //exit(255);
                     }
                     break;
 
                 default:
-                    log("LineProcess::trap: 0x%llx: %s: Unhandled type: %d", patchedAddr, insntype, target->type);
+                    log("trap: 0x%llx: %s: Unhandled type: %d", patchedAddr, insntype, target->type);
                     exit(255);
             }
 
             if (targetAddr < 1024)
             {
-                log("LineProcess::trap: 0x%llx: %s: targetAddr is in zero page!", patchedAddr, insntype);
+                log("trap: 0x%llx: %s: targetAddr is in zero page!", patchedAddr, insntype);
                 exit(255);
             }
 
             bool isPatched = patched(targetAddr);
-            log("LineProcess::trap: PATCH_CALL: targetAddr=0x%llx, isPatched=%d", targetAddr, isPatched);
+            log("trap: PATCH_CALL: targetAddr=0x%llx, isPatched=%d", targetAddr, isPatched);
             if (!isPatched)
             {
                 patchCode(targetAddr);
@@ -503,7 +508,7 @@ bool fixedTarget = false;
                 }
                 else if (patch.insn.type == INS_BRANCHCC)
                 {
-                    log("LineProcess::trap: PATCH_CALL: A BRANCHCC without a fixed target!?");
+                    log("trap: PATCH_CALL: A BRANCHCC without a fixed target!?");
 
                     exit(255);
                 }
@@ -515,7 +520,7 @@ bool fixedTarget = false;
                     uint64_t* stack = (uint64_t*)ucontext->uc_mcontext->__ss.__rsp;
                     uint64_t returnAddr = patch.insn.addr + patch.insn.size;
                     *stack = returnAddr;
-                    log("LineProcess::trap: PATCH_CALL: Calling a non fixed address: returnAddr=%p", returnAddr);
+                    log("trap: PATCH_CALL: Calling a non fixed address: returnAddr=%p", returnAddr);
                 }
             }
         } break;
@@ -524,7 +529,7 @@ bool fixedTarget = false;
         {
             int syscall = ucontext->uc_mcontext->__ss.__rax;
 #ifdef DEBUG
-            log("LineProcess::trap: PATCH_SYSCALL: Syscall: %lld",  syscall);
+            log("trap: PATCH_SYSCALL: Syscall: %lld",  syscall);
 #endif
             m_kernel.syscall(syscall, ucontext);
 
@@ -535,13 +540,13 @@ bool fixedTarget = false;
         case PATCH_FS:
         {
 #ifdef DEBUG
-            log("LineProcess::trap: PATCH_FS");
+            log("trap: PATCH_FS");
 #endif
             execFSInstruction((uint8_t*)(patchedAddr + 1), patch.patchedByte, ucontext);
         } break;
 
         default:
-            log("LineProcess::trap: Unhandled patch type: type=%d", patch.type);
+            log("trap: Unhandled patch type: type=%d", patch.type);
             exit(255);
     }
 }
@@ -576,7 +581,7 @@ void LineProcess::setSingleStep(LineThread* thread, bool enable)
     if (res != 0)
     {
         int err = errno;
-        m_kernel.log("Line::execute: Failed to get thread state: res=%d, err=%d\n", res, err);
+        log("setSingleStep: Failed to get thread state: res=%d, err=%d", res, err);
         exit(1);
     }
 
@@ -599,7 +604,7 @@ void LineProcess::setSingleStep(LineThread* thread, bool enable)
     if (res != 0)
     {
         int err = errno;
-        m_kernel.log("Line::execute: Failed to set thread state: res=%d, err=%d\n", res, err);
+        log("setSingleStep: Failed to set thread state: res=%d, err=%d", res, err);
         exit(1);
     }
 }
@@ -619,16 +624,16 @@ void LineProcess::checkSingleStep()
     if (res != 0)
     {
         int err = errno;
-        m_kernel.log("Line::execute: Failed to get thread state: res=%d, err=%d\n", res, err);
+        log("checkSingleStep: Failed to get thread state: res=%d, err=%d", res, err);
         exit(1);
     }
-    m_kernel.log("checkSingleStep: rflags=0x%llx, T=%d\n", gp_regs.uts.ts64.__rflags, !!(gp_regs.uts.ts64.__rflags & X86_EFLAGS_T));
+    log("checkSingleStep: rflags=0x%llx, T=%d", gp_regs.uts.ts64.__rflags, !!(gp_regs.uts.ts64.__rflags & X86_EFLAGS_T));
 }
 
 bool LineProcess::request(ProcessRequest* request)
 {
 #ifdef DEBUG
-    m_kernel.log("LineProcess::requestSingleStep: Adding request...\n");
+    log("request: Adding request...");
 #endif
 
     // Add the request to the queue
@@ -653,28 +658,6 @@ bool LineProcess::requestSingleStep(LineThread* thread, bool enable)
     req->enable = enable;
 
     return request(req);
-}
-
-void LineProcess::log(const char* format, ...)
-{
-    va_list va;
-    va_start(va, format);
-
-    m_kernel.logv(format, va);
-/*
-    char buf[4096];
-    vsnprintf(buf, 4096, format, va);
-    char timeStr[256];
-    time_t t;
-    struct tm *tm;
-    t = time(NULL);
-    tm = localtime(&t);
-    strftime(timeStr, 256, "%Y/%m/%d %H:%M:%S", tm);
-
-    pid_t pid = getpid();
-
-    //printf("%s: %d: %s\n", timeStr, pid, buf);
-*/
 }
 
 LineProcess* LineProcess::getProcess()

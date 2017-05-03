@@ -22,6 +22,7 @@
 #define __LINE_ELFBINARY_H_
 
 #include "elf.h"
+#include "logger.h"
 
 #include <vector>
 #include <map>
@@ -42,7 +43,7 @@ struct IFuncRela
     ElfBinary* lib;
 };
 
-class ElfBinary
+class ElfBinary : public Logger
 {
  protected:
     Line* m_line;

@@ -7,7 +7,7 @@
 #include "process.h"
 #include "elflibrary.h"
 
-GlibcRuntime::GlibcRuntime()
+GlibcRuntime::GlibcRuntime() : Logger("GlibcRuntime")
 {
     memset(&m_rtldGlobalRO, 0, sizeof(m_rtldGlobalRO));
     m_rtldGlobalRO._dl_debug_mask = 0;
@@ -89,7 +89,7 @@ void* GlibcRuntime::dl_open(
     char *env[])
 {
 #ifdef DEBUG
-    printf("GlibcRuntime::dl_open: file=%s, argc=%d, argv=%p, env=%p\n", file, argc, argv, env);
+    log("dl_open: file=%s, argc=%d, argv=%p, env=%p\n", file, argc, argv, env);
 #endif
     ElfLibrary* lib = LineProcess::getProcess()->getExec()->loadLibrary(file, true, argc, argv, env);
     if (lib == NULL)
@@ -111,7 +111,7 @@ int GlibcRuntime::dl_catch_error(
     void *args)
 {
 #ifdef DEBUG
-    printf("GlibcRuntime::dl_catch_error: objname=%p, errstring=%p\n", objname, errstring);
+    log("dl_catch_error: objname=%p, errstring=%p", objname, errstring);
 #endif
     (*operate)(args);
     return 0;
@@ -127,16 +127,16 @@ uint64_t GlibcRuntime::dl_lookup_symbol_x(
     struct link_map *)
 {
 #ifdef DEBUG
-    printf("GlibcRuntime::dl_lookup_symbol_x: symname=%s, handle=%p\n", symname, handle);
+    log("dl_lookup_symbol_x: symname=%s, handle=%p", symname, handle);
 #endif
     link_map* map = (link_map*)handle;
     ElfLibrary* library = (ElfLibrary*)(map->l_addr);
 #ifdef DEBUG
-    printf("GlibcRuntime::dl_lookup_symbol_x: library=%s\n", library->getPath());
+    log("dl_lookup_symbol_x: library=%s", library->getPath());
 #endif
     *symbol = library->findSymbol(symname);
 #ifdef DEBUG
-    printf("GlibcRuntime::dl_lookup_symbol_x: symbol=%p\n", symbol);
+    log("dl_lookup_symbol_x: symbol=%p", symbol);
 #endif
     if (*symbol == NULL)
     {
@@ -156,6 +156,7 @@ void GlibcRuntime::dl_debug_printf(const char* format, ...)
 
     char buf[4096];
     vsnprintf(buf, 4096, format, va);
+
     char timeStr[256];
     time_t t;
     struct tm *tm;
@@ -166,5 +167,6 @@ void GlibcRuntime::dl_debug_printf(const char* format, ...)
     pid_t pid = getpid();
 
     printf("%s: %d: dl_debug_printf: %s", timeStr, pid, buf);
+
 }
 

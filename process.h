@@ -31,6 +31,7 @@
 #include "kernel.h"
 #include "mainthread.h"
 #include "glibcruntime.h"
+#include "logger.h"
 
 #include <deque>
 
@@ -74,7 +75,7 @@ struct PatchRange
     uint64_t end;
 };
 
-class LineProcess
+class LineProcess : private Logger
 {
  private:
     ElfExec* m_elf;
@@ -113,6 +114,8 @@ class LineProcess
     uint64_t fetchSIB(int rexB, ucontext_t* ucontext);
     uint64_t readRegister(int reg, int rexB, int size, ucontext_t* ucontext);
     void writeRegister(int reg, int rexB, int size, uint64_t value, ucontext_t* ucontext);
+
+    uint64_t getRegister(x86_reg_t reg, ucontext_t* ucontext);
 
     uint64_t readFS64(int64_t offset)
     {
@@ -184,7 +187,6 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
     void setSingleStep(LineThread* thread, bool enable);
 
     void printregs(ucontext_t* ucontext);
-    void log(const char* __format, ...);
 
     bool patchCode(uint64_t ptr);
     bool patched(uint64_t ptr);

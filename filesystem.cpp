@@ -24,7 +24,7 @@ FileSystemMount g_fsMounts[] =
     {"/", "/Users/ian/projects/line/root"},
 };
 
-FileSystem::FileSystem()
+FileSystem::FileSystem() : Logger("FileSystem")
 {
 }
 
@@ -169,7 +169,7 @@ char* FileSystem::path2osx(const char* path)
         for (i = 0; i < (sizeof(g_fsMounts) / sizeof(FileSystemMount)); i++)
         {
 #ifdef DEBUG
-            printf("FileSystem::path2osx: %d: %s -> %s\n",
+            log("path2osx: %d: %s -> %s",
                 i,
                 g_fsMounts[i].path,
                 g_fsMounts[i].dest);
@@ -180,11 +180,11 @@ char* FileSystem::path2osx(const char* path)
             if (!strncmp(path, g_fsMounts[i].path, pathlen))
             {
 #ifdef DEBUG
-                printf("FileSystem::path2osx: -> Matched\n");
+                log("path2osx: -> Matched");
 #endif
                 string osx = string(g_fsMounts[i].dest) + "/" + pathstr.substr(pathlen);
 #ifdef DEBUG
-                printf("FileSystem::path2osx: -> osx path=%s\n", osx.c_str());
+                log("path2osx: -> osx path=%s", osx.c_str());
 #endif
                 return strdup(osx.c_str());
             }

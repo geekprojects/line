@@ -8,6 +8,7 @@
 #include <map>
 
 #include "filesystem.h"
+#include "logger.h"
 
 #define LINUX_EAGAIN 11
 
@@ -26,13 +27,11 @@ typedef bool(LinuxKernel::*syscall_t)(uint64_t syscall, ucontext_t* ucontext);
 #define SYSCALL_DEFINE(_name) bool sys_ ## _name(uint64_t syscall, ucontext_t* ucontext)
 #define SYSCALL_METHOD(_name) bool LinuxKernel::sys_ ## _name(uint64_t syscall, ucontext_t* ucontext)
 
-class LinuxKernel
+class LinuxKernel : Logger
 {
  private:
     FileSystem m_fileSystem;
     LineProcess* m_process;
-
-    FILE* m_log;
 
     std::map<int, LinuxSocket*> m_sockets;
     std::map<int, DIR*> m_dirs;
@@ -41,7 +40,6 @@ class LinuxKernel
 
     void syscallErrnoResult(ucontext_t* ucontext, uint64_t res, bool success, int err);
 
-
  public:
     LinuxKernel(LineProcess* process);
     ~LinuxKernel();
@@ -49,9 +47,6 @@ class LinuxKernel
     FileSystem* getFileSystem() { return &m_fileSystem; }
 
     bool syscall(uint64_t syscall, ucontext_t* ucontext);
-
-    void log(const char* __format, ...);
-    void logv(const char* __format, va_list ap);
 
     SYSCALL_DEFINE(notimplemented);
 
