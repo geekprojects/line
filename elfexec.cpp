@@ -149,7 +149,7 @@ void ElfExec::entry(int argc, char** argv, char** envp)
 
     *(stackpos++) = AT_NULL;
 
-    m_line->getProcess()->patchCode(entry);
+    m_line->getProcess()->getPatcher()->patch(entry);
 
     asm volatile (
         "movq %0, %%rsp\n"

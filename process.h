@@ -31,6 +31,7 @@
 #include "kernel.h"
 #include "mainthread.h"
 #include "glibcruntime.h"
+#include "patcher.h"
 #include "logger.h"
 
 #include <deque>
@@ -55,31 +56,12 @@ struct ProcessRequestSingleStep : public ProcessRequest
     bool enable;
 };
 
-enum PatchType
-{
-    PATCH_CALL,
-    PATCH_SYSCALL,
-    PATCH_FS
-};
-
-struct Patch
-{
-    PatchType type;
-    x86_insn_t insn;
-    uint8_t patchedByte;
-};
-
-struct PatchRange
-{
-    uint64_t start;
-    uint64_t end;
-};
-
 class LineProcess : private Logger
 {
  private:
     ElfExec* m_elf;
     Line* m_line;
+    Patcher m_patcher;
 
     std::map<pthread_t, LineThread*> m_threads;
     MainThread* m_mainThread;
@@ -95,9 +77,6 @@ class LineProcess : private Logger
     uint64_t m_libraryLoadAddr;
 
     uint8_t* m_rip;
-
-    std::map<uint64_t, Patch> m_patches;
-    std::vector<PatchRange*> m_patchRanges;
 
     LinuxKernel m_kernel;
     GlibcRuntime m_glibcRuntime;
@@ -141,8 +120,6 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
         *ptr = value;
     }
 
-    void patch(PatchType type, x86_insn_t insn, uint64_t pos);
-
  public:
     LineProcess(Line* line, ElfExec* exec);
     ~LineProcess();
@@ -151,6 +128,7 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
     ElfExec* getExec() { return m_elf; }
     LinuxKernel* getKernel() { return &m_kernel; }
     GlibcRuntime* getRuntime() { return &m_glibcRuntime; }
+    Patcher* getPatcher() { return &m_patcher; }
 
     void addThread(LineThread* thread);
     LineThread* getCurrentThread();
@@ -187,9 +165,6 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
     void setSingleStep(LineThread* thread, bool enable);
 
     void printregs(ucontext_t* ucontext);
-
-    bool patchCode(uint64_t ptr);
-    bool patched(uint64_t ptr);
 
     static LineProcess* getProcess();
 };

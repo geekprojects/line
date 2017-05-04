@@ -18,7 +18,7 @@ class LoggerWriter
 
  public:
     LoggerWriter();
-    ~LoggerWriter();
+    virtual ~LoggerWriter();
 
     void write(LoggerLevel level, const char* system, const char* __format, va_list ap);
 };
@@ -30,7 +30,7 @@ class Logger
 
  public:
     Logger(const char* system);
-    ~Logger();
+    virtual ~Logger();
 
     void log(const char* __format, ...); // INFO
     void logv(const char* __format, va_list ap);
