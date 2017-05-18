@@ -210,9 +210,9 @@ SYSCALL_METHOD(getrlimit)
     log("execSyscall: sys_getrlimit: resource=%d, rlim=%p", resource, rlim);
 #endif
 
-    if (resource <= 6)
+    if (resource <= 6 || resource == 9)
     {
-        if (resource == 5)
+        if (resource == 9)
         {
             resource = RLIMIT_AS;
         }
