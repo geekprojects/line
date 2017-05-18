@@ -40,10 +40,10 @@ void LoggerWriter::write(LoggerLevel level, const char* system, const char* form
 const char* levelStr = "";
 switch (level)
 {
-case DEBUG: levelStr = "DEBUG"; break;
-case INFO: levelStr = "INFO"; break;
-case WARN: levelStr = "WARN"; break;
-case ERROR: levelStr = "ERROR"; break;
+case LOG_DEBUG: levelStr = "DEBUG"; break;
+case LOG_INFO: levelStr = "INFO"; break;
+case LOG_WARN: levelStr = "WARN"; break;
+case LOG_ERROR: levelStr = "ERROR"; break;
 };
 
     pid_t pid = getpid();
@@ -51,7 +51,7 @@ case ERROR: levelStr = "ERROR"; break;
     fprintf(m_log, "%s: %d: %s: %s: %s\n", timeStr, pid, levelStr, system, buf);
     fflush(m_log);
 
-if (level == ERROR)
+if (level == LOG_ERROR)
 {
     fprintf(stderr, "%s: %d: %s: %s: %s\n", timeStr, pid, levelStr, system, buf);
 }
@@ -72,7 +72,7 @@ void Logger::log(const char* format, ...)
     va_list va;
     va_start(va, format);
 
-    g_loggerWriter.write(INFO, m_system, format, va);
+    g_loggerWriter.write(LOG_INFO, m_system, format, va);
 }
 
 void Logger::warn(const char* format, ...)
@@ -80,7 +80,7 @@ void Logger::warn(const char* format, ...)
     va_list va;
     va_start(va, format);
 
-    g_loggerWriter.write(WARN, m_system, format, va);
+    g_loggerWriter.write(LOG_WARN, m_system, format, va);
 }
 
 void Logger::error(const char* format, ...)
@@ -88,7 +88,7 @@ void Logger::error(const char* format, ...)
     va_list va;
     va_start(va, format);
 
-    g_loggerWriter.write(ERROR, m_system, format, va);
+    g_loggerWriter.write(LOG_ERROR, m_system, format, va);
 }
 
 

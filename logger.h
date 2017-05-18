@@ -5,10 +5,10 @@
 
 enum LoggerLevel
 {
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR,
+    LOG_DEBUG,
+    LOG_INFO,
+    LOG_WARN,
+    LOG_ERROR,
 };
 
 class LoggerWriter

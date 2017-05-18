@@ -25,7 +25,7 @@
 
 #include "process.h"
 
-#define DEBUG
+//#define DEBUG
 
 #define FETCH_NEXT() *(m_rip++)
 #define FETCH_MODRM() {uint8_t modrm = FETCH_NEXT(); mod = (modrm >> 6) & 0x3; rm = modrm & 7; reg = (modrm >> 3) & 7; }

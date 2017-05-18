@@ -151,7 +151,6 @@ Elf64_Shdr* ElfBinary::findSection(const char* name)
     int i;
     for (i = 0; i < m_header->e_shnum; i++)
     {
-        //log("findSection: %d: %s", i, m_shStringTable + sectionHeaderTable[i].sh_name);
         if (strcmp(m_shStringTable + sectionHeaderTable[i].sh_name, name) == 0)
         {
             return &(sectionHeaderTable[i]);
@@ -304,7 +303,7 @@ bool ElfBinary::map()
         }
         else
         {
-            log("mapDynamic: %s: Failed to find BSS section", m_path);
+            log("map: %s: Failed to find BSS section", m_path);
         }
     }
 
