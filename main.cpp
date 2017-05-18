@@ -33,7 +33,7 @@
 #include "filesystem.h"
 
 __asm__(".zerofill LINE_EXEC, LINE_EXEC");
-char __line_exec[0x800000] __attribute__((section("LINE_EXEC, LINE_EXEC")));
+char __line_exec[0xf000000] __attribute__((section("LINE_EXEC, LINE_EXEC")));
 
 static const struct option g_options[] =
 {
@@ -46,7 +46,6 @@ static const struct option g_options[] =
 int main(int argc, char** argv)
 {
     Line line;
-
 /*
     void* ptr = malloc(16);
     printf("line: ptr=%p\n", ptr);
