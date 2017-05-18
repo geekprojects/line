@@ -48,8 +48,9 @@ class Patcher : Logger
 
     bool patch(uint64_t ptr);
 
-    Patch* getPatch(uint64_t);
+    Patch* getPatch(uint64_t ptr);
 
+    PatchRange* findPatchRange(uint64_t ptr);
     bool isPatched(uint64_t ptr);
 };
 

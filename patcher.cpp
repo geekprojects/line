@@ -43,7 +43,41 @@ bool Patcher::patch(uint64_t start)
         uint8_t* p = (uint8_t*)ptr;
         if (*p == 0xcc)
         {
-            log("patch: found patch instruction! Abort!!");
+            log("patch: found patch instruction: 0x%llx", ptr);
+            if (end > ptr)
+            {
+                log("patch: But I think the end is beyond 0x%llx", end);
+
+                if (isPatched(end))
+                {
+                    log("patch: But that's ok because the end is already patched");
+                }
+                else
+                {
+                    std::vector<PatchRange*>::iterator it;
+                    PatchRange* closest = NULL;
+                    for (it = m_patchRanges.begin(); it != m_patchRanges.end(); it++)
+                    {
+                        PatchRange* itrange = *it;
+                        if (itrange->end <= end)// && itrange->start >= end)
+                        {
+                            if (closest == NULL || itrange->end > closest->end)
+                            {
+                                closest = itrange;
+                            }
+                        }
+                    }
+                    if (closest != NULL)
+                    {
+                        log("patch: Found closest previous range: 0x%llx-0x%llx", closest->start, closest->end);
+                        return patch(closest->end);
+                    }
+                    else
+                    {
+                        log("patch: No closest range!?");
+                    }
+                }
+            }
             return false;
         }
 
@@ -60,7 +94,7 @@ bool Patcher::patch(uint64_t start)
 
         range->end = ptr + size;
 
-#if 0
+#if 1
         char line[4096];
         //int i;
 
@@ -176,6 +210,20 @@ void Patcher::patch(PatchType type, x86_insn_t insn, uint64_t pos)
     patch.insn = insn;
     patch.patchedByte = original;
     m_patches.insert(make_pair(pos, patch));
+}
+
+PatchRange* Patcher::findPatchRange(uint64_t ptr)
+{
+    std::vector<PatchRange*>::iterator it;
+    for (it = m_patchRanges.begin(); it != m_patchRanges.end(); it++)
+    {
+        PatchRange* range = *it;
+        if (ptr >= range->start && ptr < range->end)
+        {
+            return range;
+        }
+    }
+    return NULL;
 }
 
 bool Patcher::isPatched(uint64_t ptr)
