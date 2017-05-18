@@ -59,8 +59,6 @@ LineProcess::LineProcess(Line* line, ElfExec* exec)
     m_line = line;
     g_process = this;
 
-    m_elf = exec;
-
     m_libraryLoadAddr = 0x40000000;
 
     x86_init(opt_64_bit, NULL, NULL);
@@ -335,9 +333,13 @@ void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
         info->si_addr);
     printregs(ucontext);
 
-    if (!m_patcher.isPatched(ucontext->uc_mcontext->__ss.__rip))
+    uint64_t rip = ucontext->uc_mcontext->__ss.__rip;
+    if (rip < IMAGE_BASE && !m_patcher.isPatched(rip))
     {
-        log("Failed in unpatched code!");
+        // HACK HACK HACK
+        log("Failed in unpatched code! ATTEMPTING TO PATCH, THIS MIGHT FAIL");
+        m_patcher.patch(ucontext->uc_mcontext->__ss.__rip);
+        return;
     }
 
     exit(1);
@@ -355,9 +357,11 @@ uint64_t LineProcess::getRegister(x86_reg_t reg, ucontext_t* ucontext)
         case 5: return ucontext->uc_mcontext->__ss.__rsp;
         case 6: return ucontext->uc_mcontext->__ss.__rbp;
         case 7: return ucontext->uc_mcontext->__ss.__rsi;
+        case 8: return ucontext->uc_mcontext->__ss.__rdi;
         case 97: return ucontext->uc_mcontext->__ss.__r8;
         case 98: return ucontext->uc_mcontext->__ss.__r9;
         case 99: return ucontext->uc_mcontext->__ss.__r10;
+        case 100: return ucontext->uc_mcontext->__ss.__r11;
         case 101: return ucontext->uc_mcontext->__ss.__r12;
         case 102: return ucontext->uc_mcontext->__ss.__r13;
         case 103: return ucontext->uc_mcontext->__ss.__r14;
@@ -406,11 +410,11 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 
             // FAR !
             uint64_t targetAddr = 0;
-bool fixedTarget = false;
+            bool fixedTarget = false;
 
             // If a BRANCH, treat this like a RET, this is the end unless we have a JMP to a point after this
             //uint64_t addr = x86_get_address(target);
-            log("trap:: 0x%llx: %s: FAR: op=%p, type=%d", patchedAddr, insntype, target, target->type);
+            log("trap: 0x%llx: %s: FAR: op=%p, type=%d", patchedAddr, insntype, target, target->type);
 
             switch (target->type)
             {
@@ -502,7 +506,7 @@ bool fixedTarget = false;
                     uint64_t* stack = (uint64_t*)ucontext->uc_mcontext->__ss.__rsp;
                     uint64_t returnAddr = patch->insn.addr + patch->insn.size;
                     *stack = returnAddr;
-                    log("trap: PATCH_CALL: Calling a non fixed address: returnAddr=%p", returnAddr);
+                    log("trap: PATCH_CALL: Calling a non fixed address 0x%llx: returnAddr=%p", targetAddr, returnAddr);
                 }
             }
         } break;
