@@ -59,15 +59,18 @@ void ElfLibrary::entry(int argc, char** argv, char** envp)
         initFunc(argc, argv, envp);
     }
 
-    uint64_t* initArray = (uint64_t*)(getDynValue(DT_INIT_ARRAY) + getBase());
-    uint64_t initArraySize = getDynValue(DT_INIT_ARRAYSZ);
-#ifdef DEBUG
-    log("ElfLibrary::entry: initArray=%p, initArraySize=%lld", initArray, initArraySize);
-#endif
-    if (initArray != NULL)
+    uint64_t initArrayVal = getDynValue(DT_INIT_ARRAY);
+    if (initArrayVal != 0)
     {
+        uint64_t* initArray = (uint64_t*)(initArrayVal + getBase());
+        uint64_t initArraySize = getDynValue(DT_INIT_ARRAYSZ);
+
+#ifdef DEBUG
+        log("ElfLibrary::entry: initArray=%p, initArraySize=%lld", initArray, initArraySize);
+#endif
+
         int i;
-        for (i = 0; i < initArraySize / 8; i++)
+        for (i = 0; i < initArraySize / sizeof(initFunc_t); i++)
         {
 #ifdef DEBUG
             log("ElfLibrary::entry:  -> 0x%llx", initArray[i]);
