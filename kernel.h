@@ -40,6 +40,8 @@ class LinuxKernel : Logger
 
     void syscallErrnoResult(ucontext_t* ucontext, uint64_t res, bool success, int err);
 
+    bool sys_clone_internal(ucontext_t* ucontext, uint32_t clone_flags, uint32_t newsp, void* parent_tid, void* child_tid, void* regs);
+
  public:
     LinuxKernel(LineProcess* process);
     ~LinuxKernel();
@@ -78,6 +80,8 @@ class LinuxKernel : Logger
     SYSCALL_DEFINE(socket);
     SYSCALL_DEFINE(connect);
     SYSCALL_DEFINE(clone);
+    SYSCALL_DEFINE(fork);
+    SYSCALL_DEFINE(vfork);
     SYSCALL_DEFINE(execve);
     SYSCALL_DEFINE(wait4);
     SYSCALL_DEFINE(kill);
@@ -97,6 +101,7 @@ class LinuxKernel : Logger
     SYSCALL_DEFINE(readlink);
     SYSCALL_DEFINE(chmod);
     SYSCALL_DEFINE(fchmod);
+    SYSCALL_DEFINE(chown);
     SYSCALL_DEFINE(umask);
     SYSCALL_DEFINE(getrlimit);
     SYSCALL_DEFINE(getuid);

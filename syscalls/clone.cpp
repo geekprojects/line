@@ -9,21 +9,17 @@
 #include "process.h"
 #include "thread.h"
 
-SYSCALL_METHOD(clone)
+bool LinuxKernel::sys_clone_internal(
+    ucontext_t* ucontext,
+    uint32_t clone_flags,
+    uint32_t newsp,
+    void* parent_tid,
+    void* child_tid,
+    void* regs)
 {
-    unsigned long clone_flags = ucontext->uc_mcontext->__ss.__rdi;
-#ifdef DEBUG
-    unsigned long newsp = ucontext->uc_mcontext->__ss.__rsi;
-    void* parent_tid = (void*)ucontext->uc_mcontext->__ss.__rdx;
-#endif
-    void* child_tid = (void*)ucontext->uc_mcontext->__ss.__r10;
-#ifdef DEBUG
-    void* regs = (void*)ucontext->uc_mcontext->__ss.__r8;
-#endif
-
 #ifdef DEBUG
     log(
-        "sys_clone: flags=0x%lx, sp=0x%lx, parent_tid=%p, child_tid=%p, regs=%p",
+        "sys_clone_internal: flags=0x%lx, sp=0x%lx, parent_tid=%p, child_tid=%p, regs=%p",
         clone_flags,
         newsp,
         parent_tid,
@@ -79,5 +75,27 @@ SYSCALL_METHOD(clone)
         ucontext->uc_mcontext->__ss.__rax = pid;
     }
     return true;
+}
+
+SYSCALL_METHOD(clone)
+{
+    unsigned long clone_flags = ucontext->uc_mcontext->__ss.__rdi;
+    unsigned long newsp = ucontext->uc_mcontext->__ss.__rsi;
+    void* parent_tid = (void*)ucontext->uc_mcontext->__ss.__rdx;
+    void* child_tid = (void*)ucontext->uc_mcontext->__ss.__r10;
+    void* regs = (void*)ucontext->uc_mcontext->__ss.__r8;
+
+    return sys_clone_internal(ucontext, clone_flags, newsp, parent_tid, child_tid, regs);
+}
+
+
+SYSCALL_METHOD(fork)
+{
+    return sys_clone_internal(ucontext, 0x1200011, 0, 0, NULL, NULL);
+}
+
+SYSCALL_METHOD(vfork)
+{
+    return sys_clone_internal(ucontext, 0x1200011, 0, 0, NULL, NULL);
 }
 

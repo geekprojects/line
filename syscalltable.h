@@ -55,8 +55,8 @@
     &LinuxKernel::sys_notimplemented,	// 54: sys_setsockopt int fd,int level,int optname,char *optval,int optlen
     &LinuxKernel::sys_notimplemented,	// 55: sys_getsockopt int fd,int level,int optname,char *optval,int *optlen
     &LinuxKernel::sys_clone,	// 56: sys_clone unsigned long clone_flags,unsigned long newsp,void *parent_tid,void *child_tid
-    &LinuxKernel::sys_notimplemented,	// 57: sys_fork 
-    &LinuxKernel::sys_notimplemented,	// 58: sys_vfork 
+    &LinuxKernel::sys_fork,	// 57: sys_fork
+    &LinuxKernel::sys_vfork,	// 58: sys_vfork
     &LinuxKernel::sys_execve,	// 59: sys_execve const char *filename,const char *const argv[],const char *const envp[]
     &LinuxKernel::sys_notimplemented,	// 60: sys_exit int error_code
     &LinuxKernel::sys_wait4,	// 61: sys_wait4 pid_t upid,int *stat_addr,int options,struct rusage *ru
@@ -90,7 +90,7 @@
     &LinuxKernel::sys_readlink,	// 89: sys_readlink const char *path,char *buf,int bufsiz
     &LinuxKernel::sys_chmod,	// 90: sys_chmod const char *filename,mode_t mode
     &LinuxKernel::sys_fchmod,	// 91: sys_fchmod unsigned int fd,mode_t mode
-    &LinuxKernel::sys_notimplemented,	// 92: sys_chown const char *filename,uid_t user,gid_t group
+    &LinuxKernel::sys_chown,	// 92: sys_chown const char *filename,uid_t user,gid_t group
     &LinuxKernel::sys_notimplemented,	// 93: sys_fchown unsigned int fd,uid_t user,gid_t group
     &LinuxKernel::sys_notimplemented,	// 94: sys_lchown const char *filename,uid_t user,gid_t group
     &LinuxKernel::sys_umask,	// 95: sys_umask int mask
