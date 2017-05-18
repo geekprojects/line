@@ -1,19 +1,24 @@
 #ifndef __LINE_SYSCALLS_FS_H_
 #define __LINE_SYSCALLS_FS_H_
 
+#include <stdint.h>
+
+/* Constant that identifies the `devfs' filesystem.  */
+#define DEVFS_SUPER_MAGIC       0x1373
+
+/* Constant that identifies the `devpts' filesystem.  */
+#define DEVPTS_SUPER_MAGIC      0x1cd1
+
 struct linux_stat
 {
     uint64_t st_dev;
-//uint32_t __pad0;
-uint32_t __pad1;
     uint64_t st_ino;
-    unsigned int st_nlink;
-    unsigned int st_mode;
-    unsigned int st_uid;
-    unsigned int st_gid;
-    //unsigned int __pad2;
-    uint64_t st_rdev;
+    uint64_t st_nlink;
+    uint32_t st_mode;
+    uint32_t st_uid;
+    uint32_t st_gid;
     uint32_t __pad2;
+    uint64_t st_rdev;
     uint64_t st_size;
     unsigned long int st_blksize;
     unsigned long int st_blocks;

@@ -161,9 +161,23 @@ char* FileSystem::path2linux(const char* path)
 
 char* FileSystem::path2osx(const char* path)
 {
+    if (path == NULL)
+    {
+        return NULL;
+    }
+    log("path2osx: path=%s", path);
     string pathstr = string(path);
 
-    if (path[0] == '/')
+    if (!strncmp(path, "/dev/pts/", 9))
+    {
+        int id = atoi(path + 9);
+        char* result = (char*)malloc(30);
+        sprintf(result, "/dev/ttys%03d", id);
+        log("path2osx: %s -> %s", path, result);
+        return result;
+    }
+
+    if (pathstr.length() > 0 && pathstr[0] == '/')
     {
         int i;
         for (i = 0; i < (sizeof(g_fsMounts) / sizeof(FileSystemMount)); i++)

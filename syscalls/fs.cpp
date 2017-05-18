@@ -12,16 +12,36 @@
 
 using namespace std;
 
+static uint64_t dev_makedev(uint32_t __major, uint32_t __minor)
+{
+  return ((__minor & 0xff) | ((__major & 0xfff) << 8)
+          | (((uint64_t) (__minor & ~0xff)) << 12)
+          | (((uint64_t) (__major & ~0xfff)) << 32));
+}
+
 static void stat2linux(struct stat osx_stat, struct linux_stat* linux_stat)
 {
     memset(linux_stat, 0, sizeof(struct linux_stat));
-    linux_stat->st_dev = osx_stat.st_dev;         /* Device.  */
+
+    int dev_major = (osx_stat.st_dev >> 24) & 0xff;
+    int dev_minor = (osx_stat.st_dev & 0xffffff);
+    linux_stat->st_dev = dev_makedev(dev_major, dev_minor);
+
+    //linux_stat->st_dev = osx_stat.st_dev;         /* Device.  */
     linux_stat->st_ino = osx_stat.st_ino;         /* File serial number.  */
     linux_stat->st_mode = osx_stat.st_mode;        /* File mode.  */
     linux_stat->st_nlink = osx_stat.st_nlink;       /* Link count.  */
     linux_stat->st_uid = osx_stat.st_uid;         /* User ID of the file's owner.  */
     linux_stat->st_gid = osx_stat.st_gid;         /* Group ID of the file's group. */
-    linux_stat->st_rdev = osx_stat.st_rdev;        /* Device number, if device.  */
+
+    int rdev_major = (osx_stat.st_rdev >> 24) & 0xff;
+    int rdev_minor = (osx_stat.st_rdev & 0xffffff);
+    if (rdev_major == 16)
+    {
+        rdev_major = 3;
+    }
+    linux_stat->st_rdev = dev_makedev(rdev_major, rdev_minor);
+
     linux_stat->st_size = osx_stat.st_size;        /* Size of file, in bytes.  */
     linux_stat->st_blksize = osx_stat.st_blksize;     /* Optimal block size for I/O.  */
     linux_stat->st_blocks = osx_stat.st_blocks;      /* Number 512-byte blocks allocated. */
@@ -90,14 +110,19 @@ SYSCALL_METHOD(lstat)
 {
     const char* filename = (const char*)(ucontext->uc_mcontext->__ss.__rdi);
     linux_stat* linux_stat = (struct linux_stat*)(ucontext->uc_mcontext->__ss.__rsi);
+
+    char* osx_filename = m_fileSystem.path2osx(filename);
 #ifdef DEBUG
-    log("execSyscall: sys_lstat: filename=%s, linux_stat=%p", filename, linux_stat);
+    log("execSyscall: sys_lstat: filename=%s (%s), linux_stat=%p", filename, osx_filename, linux_stat);
 #endif
+
 
     struct stat osx_stat;
     int res;
-    res = lstat(filename, &osx_stat);
+    res = lstat(osx_filename, &osx_stat);
     int err = errno;
+
+    free(osx_filename);
 
     if (res == 0)
     {
@@ -115,14 +140,18 @@ SYSCALL_METHOD(access)
     const char* path = (const char*)(ucontext->uc_mcontext->__ss.__rdi);
     int mode = (int)(ucontext->uc_mcontext->__ss.__rsi);
 
+    char* osx_path = m_fileSystem.path2osx(path);
+
 #ifdef DEBUG
-    log("sys_access: path=%s, mode=0x%x", path, mode);
+    log("sys_access: path=%s (%s), mode=0x%x", path, osx_path, mode);
 #endif
-    int res = m_fileSystem.access(path, mode);
+    int res = m_fileSystem.access(osx_path, mode);
     int err = errno;
 #ifdef DEBUG
     log("sys_access:  -> res=%d, errno=%d", res, errno);
 #endif
+
+    free(osx_path);
 
     syscallErrnoResult(ucontext, res, res == 0, err);
 
@@ -316,6 +345,39 @@ SYSCALL_METHOD(statfs)
     log("sys_statfs: pathname=%s, linux_statfs=%p", pathname, linux_statfs);
 #endif
 
+    if (!strncmp("/dev/pts", pathname, 8))
+    {
+        // Pretend to have a /dev/pts mount!
+        memset(linux_statfs, 0, sizeof(struct linux_statfs));
+        linux_statfs->f_type = DEVPTS_SUPER_MAGIC;
+        linux_statfs->f_bsize = 1024;
+        linux_statfs->f_blocks = 0;
+        linux_statfs->f_bfree = 0;
+        linux_statfs->f_bavail = 0;
+        linux_statfs->f_files = 0;
+        linux_statfs->f_ffree = 0;
+
+        ucontext->uc_mcontext->__ss.__rax = 0;
+ 
+        return true;
+    }
+    else if (!strncmp("/dev", pathname, 4))
+    {
+        // Fake the /dev mount!
+        memset(linux_statfs, 0, sizeof(struct linux_statfs));
+        linux_statfs->f_type = DEVFS_SUPER_MAGIC;
+        linux_statfs->f_bsize = 1024;
+        linux_statfs->f_blocks = 0;
+        linux_statfs->f_bfree = 0;
+        linux_statfs->f_bavail = 0;
+        linux_statfs->f_files = 0;
+        linux_statfs->f_ffree = 0;
+
+        ucontext->uc_mcontext->__ss.__rax = 0;
+ 
+        return true;
+    }
+
     char* osxPathName = m_fileSystem.path2osx(pathname);
     if (osxPathName == NULL)
     {
@@ -369,6 +431,35 @@ log("sys_utimes: res=%d, err=%d\n", res, err);
 free(osxpath);
 
     return true;
+}
+
+SYSCALL_METHOD(chown)
+{
+    const char* path = (const char*)(ucontext->uc_mcontext->__ss.__rdi);
+    char* osxpath = m_fileSystem.path2osx(path);
+    int uid = ucontext->uc_mcontext->__ss.__rsi;
+    int gid = ucontext->uc_mcontext->__ss.__rdx;
+
+#ifdef DEBUG
+    log("sys_chown: path=%p->%p, uid=%d, gid=%d\n", path, osxpath, uid, gid);
+#endif
+
+    free(osxpath);
+    ucontext->uc_mcontext->__ss.__rax = 0;
+    return true;
+
+/*
+    int res = chmod(osxpath, mode);
+    int err = errno;
+#ifdef DEBUG
+    log("sys_chmod: res=%d, err=%d\n", res, err);
+#endif
+    syscallErrnoResult(ucontext, res, res == 0, err);
+
+    free(osxpath);
+
+    return true;
+*/
 }
 
 

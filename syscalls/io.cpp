@@ -71,13 +71,14 @@ SYSCALL_METHOD(openat)
 
 #ifdef DEBUG
     log(
-        "sys_openat: dfd=%lld, filename=%p, flags=0x%x (0x%x), mode=0x%x",
+        "sys_openat: dfd=%lld, filename=%s, flags=0x%x (0x%x), mode=0x%x",
         dfd,
         filename,
         flags,
         osx_flags,
         mode);
 #endif
+
 
     if (dfd == LINUX_AT_FDCWD)
     {
@@ -227,8 +228,10 @@ SYSCALL_METHOD(lseek)
 SYSCALL_METHOD(ioctl)
 {
     unsigned int fd = ucontext->uc_mcontext->__ss.__rdi;
-    unsigned int cmd = ucontext->uc_mcontext->__ss.__rsi;
+    unsigned int request = ucontext->uc_mcontext->__ss.__rsi;
     unsigned long arg = ucontext->uc_mcontext->__ss.__rdx;
+
+    int cmd = request & 0xffff;
 #ifdef DEBUG
     log("execSyscall: sys_ioctl: fd=%d, cmd=0x%x, arg=0x%lx", fd, cmd, arg);
 #endif
@@ -253,7 +256,7 @@ SYSCALL_METHOD(ioctl)
             int res = ioctl(fd, TIOCGWINSZ, &arg);
 #ifdef DEBUG
             winsize* ws = (winsize*)arg;
-            printf("sys_ioctl: TIOCGWINSZ: ws_rows=%d, ws_cols=%d\n", ws->ws_row, ws->ws_col);
+            log("sys_ioctl: TIOCGWINSZ: ws_rows=%d, ws_cols=%d", ws->ws_row, ws->ws_col);
 #endif
             int err = errno;
             syscallErrnoResult(ucontext, res, res >= 0, err);
@@ -302,6 +305,29 @@ SYSCALL_METHOD(ioctl)
             vt_mode->acqsig = 0;
             vt_mode->frsig = 0;
             ucontext->uc_mcontext->__ss.__rax = 0;
+        } break;
+
+        case 0x5431: // TIOCSPTLCK
+        {
+            ucontext->uc_mcontext->__ss.__rax = 0;
+        } break;
+
+        case 0x5430: // TIOCGPTN
+        {
+            log("sys_ioctl: TIOCGPTN: fd=%d", fd);
+
+            char* pt = ptsname(fd);
+            log("sys_ioctl: TIOCGPTN: pt=%s", pt);
+
+            int id;
+            sscanf(pt, "/dev/ttys%d", &id);
+
+            log("sys_ioctl: TIOCGPTN: id=%d", id);
+
+            ucontext->uc_mcontext->__ss.__rax = 0;
+
+            int* idres = (int*)arg;
+            *idres = id;
         } break;
 
         default:
