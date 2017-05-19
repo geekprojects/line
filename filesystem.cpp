@@ -206,7 +206,10 @@ char* FileSystem::path2osx(const char* path)
     }
     else
     {
-        return strdup(path);
+        char cwd[1024];
+        getcwd(cwd, 1024);
+        string newpath = string(cwd) + "/" + string(path);
+        return path2osx(newpath.c_str());
     }
 
     return NULL;
