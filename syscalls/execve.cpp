@@ -5,6 +5,8 @@
 #include <signal.h>
 #include <pthread.h>
 
+#include <mach-o/dyld.h>
+
 #include "kernel.h"
 #include "thread.h"
 #include "process.h"
@@ -14,10 +16,24 @@ SYSCALL_METHOD(execve)
     char* filename = (char*)(ucontext->uc_mcontext->__ss.__rdi);
     char** orig_argv = (char**)(ucontext->uc_mcontext->__ss.__rsi);
     char** orig_envp = (char**)(ucontext->uc_mcontext->__ss.__rdx);
+
+#ifdef DEBUG
     log("sys_execve: filename=%s, orig_argv=%p, orig_envp=%p",
         filename,
         orig_argv,
         orig_envp);
+#endif
+
+    uint32_t pathlen = 1024;
+    char linepath[pathlen];
+
+    int res;
+    res = _NSGetExecutablePath(linepath, &pathlen);
+    if (res != 0)
+    {
+        error("sys_execve: Failed to get path to line executable!");
+        return false;
+    }
 
     int argc = 0;
     while (orig_argv[argc] != NULL)
@@ -29,7 +45,7 @@ SYSCALL_METHOD(execve)
 
     int i = 0;
     int newarg = 0;
-    new_argv[newarg++] = (char*)"./line";
+    new_argv[newarg++] = (char*)linepath;
     //new_argv[1] = (char*)"--trace";
     new_argv[newarg++] = (char*)"--forked";
     new_argv[newarg++] = (char*)"--exec";
@@ -41,7 +57,13 @@ SYSCALL_METHOD(execve)
     }
     new_argv[newarg] = NULL;
 
-    int res = execve("./line", new_argv, orig_envp);
+#ifdef DEBUG
+    log("sys_execve: linepath=%s, new_argv=%p, orig_envp=%p", linepath, new_argv, orig_envp);
+#endif
+
+    log("sys_execve: linepath=%s, elf binary=%s", linepath, filename);
+
+    res = execve(linepath, new_argv, orig_envp);
     int err = errno;
 
     syscallErrnoResult(ucontext, res, res == 0, err);
