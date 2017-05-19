@@ -78,7 +78,6 @@ class LineProcess : private Logger
 
     uint8_t* m_rip;
 
-    LinuxKernel m_kernel;
     GlibcRuntime m_glibcRuntime;
 
     static void signalHandler(int sig, siginfo_t* info, void* contextptr);
@@ -126,7 +125,7 @@ printf("LineProcess::readFS64: offset=%lld, m_fsPtr=0x%llx -> %p\n", offset, m_f
 
     Line* getLine() { return m_line; }
     ElfExec* getExec() { return m_elf; }
-    LinuxKernel* getKernel() { return &m_kernel; }
+    LinuxKernel* getKernel() { return m_line->getKernel(); }
     GlibcRuntime* getRuntime() { return &m_glibcRuntime; }
     Patcher* getPatcher() { return &m_patcher; }
 

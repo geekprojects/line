@@ -12,9 +12,10 @@ syscall_t LinuxKernel::m_syscalls[] =
 #include "syscalltable.h"
 };
 
-LinuxKernel::LinuxKernel(LineProcess* process) : Logger("LinuxKernel")
+LinuxKernel::LinuxKernel(Line* line) : Logger("LinuxKernel")
 {
-    m_process = process;
+    m_process = NULL;
+    m_line = line;
 }
 
 LinuxKernel::~LinuxKernel()

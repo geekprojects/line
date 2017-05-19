@@ -54,7 +54,7 @@ static LineProcess* g_process = NULL;
 extern char **environ;
 
 LineProcess::LineProcess(Line* line, ElfExec* exec)
-    : Logger("Process"), m_elf(exec), m_patcher(this), m_kernel(this)
+    : Logger("Process"), m_elf(exec), m_patcher(this)
 {
     m_line = line;
     g_process = this;
@@ -517,7 +517,7 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 #ifdef DEBUG
             log("trap: PATCH_SYSCALL: Syscall: %lld",  syscall);
 #endif
-            m_kernel.syscall(syscall, ucontext);
+            getKernel()->syscall(syscall, ucontext);
 
             // Skip it!
             ucontext->uc_mcontext->__ss.__rip++;

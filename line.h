@@ -25,12 +25,15 @@
 
 #include "elfexec.h"
 #include "logger.h"
+#include "kernel.h"
 
 class LineProcess;
 
 class Line : Logger
 {
  private:
+    LinuxKernel m_kernel;
+
     ElfExec* m_elfBinary;
     LineProcess* m_process;
 
@@ -52,6 +55,7 @@ class Line : Logger
 
     ElfExec* getElfBinary() { return m_elfBinary; }
     LineProcess* getProcess() { return m_process; }
+    LinuxKernel* getKernel() { return &m_kernel; }
 };
 
 

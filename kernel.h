@@ -20,6 +20,7 @@ struct LinuxSocket
     int protocol;
 };
 
+class Line;
 class LinuxKernel;
 class LineProcess;
 typedef bool(LinuxKernel::*syscall_t)(uint64_t syscall, ucontext_t* ucontext);
@@ -31,6 +32,8 @@ class LinuxKernel : Logger
 {
  private:
     FileSystem m_fileSystem;
+
+    Line* m_line;
     LineProcess* m_process;
 
     std::map<int, LinuxSocket*> m_sockets;
@@ -43,8 +46,10 @@ class LinuxKernel : Logger
     bool sys_clone_internal(ucontext_t* ucontext, uint32_t clone_flags, uint32_t newsp, void* parent_tid, void* child_tid, void* regs);
 
  public:
-    LinuxKernel(LineProcess* process);
+    LinuxKernel(Line* line);
     ~LinuxKernel();
+
+    void setProcess(LineProcess* process) { m_process = process; }
 
     FileSystem* getFileSystem() { return &m_fileSystem; }
 

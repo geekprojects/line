@@ -126,39 +126,11 @@ const char* execopt = NULL;
         execargv[i] = strdup(argv[i + optind]);
     }
 
-    // First see if we can find the executable in the Linux vfs
-    FileSystem fs;
-    char* linuxExec = fs.path2osx(executable);
-
-int a = -1;
-    if (linuxExec != NULL)
-    {
-        a = access(linuxExec, F_OK | X_OK);
-    }
-
-    if (linuxExec == NULL || a != 0)
-    {
-        // Nope, try the normal file system
-        if (linuxExec != NULL)
-        {
-            free(linuxExec);
-        }
-
-        linuxExec = strdup(executable);
-        a = access(linuxExec, F_OK | X_OK);
-    }
-
-    if (a != 0)
-    {
-        printf("%s: unable to find executable: %s -> %s\n", argv[0], executable, linuxExec);
-        exit(1);
-    }
-
     bool res;
-    res = line.open(linuxExec);
+    res = line.open(executable);
     if (!res)
     {
-        printf("%s: Unable to open %s\n", argv[0], argv[1]);
+        printf("%s: Unable to open %s\n", argv[0], executable);
         return 1;
     }
 

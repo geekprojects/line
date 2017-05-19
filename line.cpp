@@ -28,9 +28,13 @@
 #include "process.h"
 #include "utils.h"
 
+#include <sys/param.h>
+
+using namespace std;
+
 #define X86_EFLAGS_T 0x100UL
 
-Line::Line() : Logger("Line")
+Line::Line() : Logger("Line"), m_kernel(this)
 {
     m_configTrace = false;
     m_configForked = false;
@@ -40,12 +44,28 @@ Line::~Line()
 {
 }
 
-bool Line::open(const char* elfpath)
+bool Line::open(const char* execpath)
 {
     bool res;
 
+    log("Loading executable: %s", execpath);
+
+    char* linuxExec = m_kernel.getFileSystem()->path2osx(execpath);
+
+    int a = -1;
+    if (linuxExec != NULL)
+    {
+        a = access(linuxExec, F_OK | X_OK);
+    }
+
+    if (a != 0)
+    {
+        error("unable to find executable: %s -> %s", execpath, linuxExec);
+        return false;
+    }
+
     m_elfBinary = new ElfExec(this);
-    res = m_elfBinary->load(elfpath);
+    res = m_elfBinary->load(linuxExec);
     if (!res)
     {
         return false;
@@ -57,6 +77,7 @@ bool Line::open(const char* elfpath)
 bool Line::execute(int argc, char** argv)
 {
     m_process = new LineProcess(this, m_elfBinary);
+    m_kernel.setProcess(m_process);
 
     bool res;
     res = m_elfBinary->map();
