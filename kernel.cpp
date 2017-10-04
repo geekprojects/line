@@ -33,7 +33,7 @@ bool LinuxKernel::syscall(uint64_t syscall, ucontext_t* ucontext)
     bool res = (this->*m_syscalls[syscall])(syscall, ucontext);
     if (!res)
     {
-        log("LinuxKernel::syscall: syscall failed: %lld\n", syscall);
+        log("LinuxKernel::syscall: syscall failed: %lld", syscall);
         m_process->printregs(ucontext);
         exit(255);
     }
