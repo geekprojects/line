@@ -51,6 +51,7 @@ class LinuxKernel : Logger
 
     void setProcess(LineProcess* process) { m_process = process; }
 
+    Line* getLine() { return m_line; }
     FileSystem* getFileSystem() { return &m_fileSystem; }
 
     bool syscall(uint64_t syscall, ucontext_t* ucontext);

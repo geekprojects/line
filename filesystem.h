@@ -4,14 +4,21 @@
 #include "logger.h"
 
 #include <string>
+#include <vector>
+#include <map>
+
+class Config;
 
 class FileSystem : Logger
 {
  private:
+    std::vector<std::pair<std::string, std::string> > m_mounts;
 
  public:
     FileSystem();
     ~FileSystem();
+
+    bool init(Config* config);
 
     int openat(int fd, const char* path, int oflags, int mode = 0);
 

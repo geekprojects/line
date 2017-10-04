@@ -38,6 +38,14 @@ Line::Line() : Logger("Line"), m_kernel(this)
 {
     m_configTrace = false;
     m_configForked = false;
+
+    const char* homechar = getenv("HOME");
+    string home = string(homechar);
+    m_containerBase = home + "/Library/Application Support/Line/default";
+
+    m_config.load(m_containerBase);
+
+    m_kernel.getFileSystem()->init(&m_config);
 }
 
 Line::~Line()
@@ -48,7 +56,7 @@ bool Line::open(const char* execpath)
 {
     bool res;
 
-    log("Loading executable: %s", execpath);
+    log("open: executable: %s", execpath);
 
     char* linuxExec = m_kernel.getFileSystem()->path2osx(execpath);
 
@@ -78,6 +86,12 @@ bool Line::execute(int argc, char** argv)
 {
     m_process = new LineProcess(this, m_elfBinary);
     m_kernel.setProcess(m_process);
+
+    int i;
+    for (i = 0; i < argc; i++)
+    {
+        log("execute: arg %d: %s", i, argv[i]);
+    }
 
     bool res;
     res = m_elfBinary->map();

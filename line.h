@@ -26,6 +26,7 @@
 #include "elfexec.h"
 #include "logger.h"
 #include "kernel.h"
+#include "config.h"
 
 class LineProcess;
 
@@ -33,6 +34,8 @@ class Line : Logger
 {
  private:
     LinuxKernel m_kernel;
+    std::string m_containerBase;
+    Config m_config;
 
     ElfExec* m_elfBinary;
     LineProcess* m_process;
@@ -48,6 +51,8 @@ class Line : Logger
 
     bool execute(int argc, char** argv);
 
+    std::string getContainerBase() { return m_containerBase; }
+    Config* getConfig() { return &m_config; }
     void setConfigTrace(bool trace) { m_configTrace = trace; }
     bool getConfigTrace() { return m_configTrace; }
     void setConfigForked(bool v) { m_configForked = v; }

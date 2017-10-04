@@ -6,6 +6,8 @@
 #include <errno.h>
 
 #include "filesystem.h"
+#include "kernel.h"
+#include "line.h"
 
 //#define DEBUG
 
@@ -17,19 +19,19 @@ struct FileSystemMount
     const char* dest;
 };
 
-FileSystemMount g_fsMounts[] =
-{
-    {"/Users", "/Users"},
-    {"/dev", "/dev"},
-    {"/", "/Users/ian/projects/line/root"},
-};
-
 FileSystem::FileSystem() : Logger("FileSystem")
 {
+
 }
 
 FileSystem::~FileSystem()
 {
+}
+
+bool FileSystem::init(Config* config)
+{
+    m_mounts = config->getMounts();
+    return true;
 }
 
 int FileSystem::openat(int dfd, const char* path, int oflags, int mode)
@@ -179,24 +181,26 @@ char* FileSystem::path2osx(const char* path)
 
     if (pathstr.length() > 0 && pathstr[0] == '/')
     {
-        int i;
-        for (i = 0; i < (sizeof(g_fsMounts) / sizeof(FileSystemMount)); i++)
+        std::vector<pair<std::string, std::string> >::iterator it;
+
+        for (it = m_mounts.begin(); it != m_mounts.end(); it++)
         {
+            string mountPath = it->first;
+            string mountDest = it->second;
 #ifdef DEBUG
-            log("path2osx: %d: %s -> %s",
-                i,
-                g_fsMounts[i].path,
-                g_fsMounts[i].dest);
+            log("path2osx: %s -> %s",
+                mountPath.c_str(),
+                mountDest.c_str());
 #endif
 
-            int pathlen = strlen(g_fsMounts[i].path);
+            int pathlen = mountPath.length();
 
-            if (!strncmp(path, g_fsMounts[i].path, pathlen))
+            if (!strncmp(path, mountPath.c_str(), pathlen))
             {
 #ifdef DEBUG
                 log("path2osx: -> Matched");
 #endif
-                string osx = string(g_fsMounts[i].dest) + "/" + pathstr.substr(pathlen);
+                string osx = mountDest + "/" + pathstr.substr(pathlen);
 #ifdef DEBUG
                 log("path2osx: -> osx path=%s", osx.c_str());
 #endif
