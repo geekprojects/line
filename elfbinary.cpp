@@ -45,6 +45,7 @@ using namespace std;
 #define VDSO_GETTIMEOFDAY 0xffffffffff600000
 
 //#define DEBUG_RELOCATE
+#define DEBUG
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
@@ -72,7 +73,15 @@ ElfBinary::ElfBinary(Line* line) : Logger("ElfBinary")
 {
     m_line = line;
     m_exec = NULL;
+    m_path = NULL;
+    m_image = NULL;
+    m_header = NULL;
+    m_shStringTable = NULL;
+    m_stringTable = NULL;
+    m_end = 0x0;
     m_base = 0x0;
+    m_symbolSection = NULL;
+    m_tlsBase = 0;
     m_tlsSize = 0;
 }
 
@@ -510,7 +519,7 @@ bool ElfBinary::loadLibraries()
 #endif
 
     vector<uint64_t>::iterator it;
-    for (it = m_needed.begin(); it != m_needed.end(); it++)
+    for (it = m_needed.begin(); it != m_needed.end(); ++it)
     {
         uint64_t needed = *it;
 
@@ -647,7 +656,7 @@ bool ElfBinary::relocateIFuncs()
     uint64_t base = getBase();
 
     vector<IFuncRela>::iterator it;
-    for (it = m_ifuncRelas.begin(); it != m_ifuncRelas.end(); it++)
+    for (it = m_ifuncRelas.begin(); it != m_ifuncRelas.end(); ++it)
     {
         IFuncRela rela = *it;
 
@@ -815,7 +824,7 @@ void ElfBinary::relocateRela(
         {
             std::map<std::string, ElfLibrary*> libs = m_exec->getLibraries();
             std::map<std::string, ElfLibrary*>::iterator it;
-            for (it = libs.begin(); it != libs.end() && symbol == NULL; it++)
+            for (it = libs.begin(); it != libs.end() && symbol == NULL; ++it)
             {
                 lib = it->second;
                 symbol = lib->findSymbol(symName);

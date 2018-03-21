@@ -168,5 +168,6 @@ void GlibcRuntime::dl_debug_printf(const char* format, ...)
 
     printf("%s: %d: dl_debug_printf: %s", timeStr, pid, buf);
 
+    va_end(va);
 }
 

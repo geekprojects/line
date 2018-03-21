@@ -119,7 +119,7 @@ void ElfExec::entry(int argc, char** argv, char** envp)
     }
 
     // Write the standard stack entry details
-    uint64_t* stack = (uint64_t*)alloca(4096); // Allocate from our stack
+    uint64_t* stack = (uint64_t*)alloca(8196); // Allocate from our stack
     uint64_t* stackpos = stack;
     *(stackpos++) = argc;
     for (i = 0; i < argc; i++)

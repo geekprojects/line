@@ -69,6 +69,8 @@ SYSCALL_METHOD(execve)
     syscallErrnoResult(ucontext, res, res == 0, err);
     log("sys_execve: execve returned! err=%d", err);
 
+    delete[] new_argv;
+
     return true;
 }
 
