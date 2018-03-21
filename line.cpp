@@ -38,10 +38,19 @@ Line::Line() : Logger("Line"), m_kernel(this)
 {
     m_configTrace = false;
     m_configForked = false;
+    m_elfBinary = NULL;
+    m_process = NULL;
 
-    const char* homechar = getenv("HOME");
+    const char* homechar = getenv("OSXHOME");
+    if (homechar == NULL)
+    {
+        homechar = getenv("HOME");
+    }
     string home = string(homechar);
     m_containerBase = home + "/Library/Application Support/Line/default";
+
+    string logDir = m_containerBase + "/logs";
+    LoggerWriter::init(logDir);
 
     m_config.load(m_containerBase);
 
