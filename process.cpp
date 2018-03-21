@@ -54,10 +54,15 @@ static LineProcess* g_process = NULL;
 extern char **environ;
 
 LineProcess::LineProcess(Line* line, ElfExec* exec)
-    : Logger("Process"), m_elf(exec), m_patcher(this)
+    : Logger("Process"), m_elf(exec), m_line(line), m_patcher(this)
 {
-    m_line = line;
     g_process = this;
+
+    m_fs = 0;
+    m_fsPtr = 0;
+    m_brk = 0;
+    m_rip = NULL;
+    m_mainThread = NULL;
 
     m_libraryLoadAddr = 0x40000000;
 
@@ -101,11 +106,13 @@ bool LineProcess::start(int argc, char** argv)
 
     // Set the environment
     int envsize = 0;
+
+#if 1
     while (environ[envsize] != NULL)
     {
         envsize++;
     }
-    char** linux_environ = (char**)malloc(envsize + 2);
+    char** linux_environ = (char**)malloc(sizeof(char*) * (envsize + 3));
 
     int i;
     for (i = 0; i < envsize; i++)
@@ -113,15 +120,41 @@ bool LineProcess::start(int argc, char** argv)
         const char* env = environ[i];
         if (!strncmp("PATH=", env, 5))
         {
-            linux_environ[i] = (char*)"PATH=/bin:/usr/bin";
+            linux_environ[i] = (char*)"PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/sbin";
         }
+/*
+        else if (!strncmp("HOME=", env, 5))
+        {
+            linux_environ[i] = (char*)"HOME=/home/ian";
+        }
+*/
         else
         {
             linux_environ[i] = environ[i];
         }
     }
-    linux_environ[envsize] = (char*)"LINUX_ON_MAC=1";
-    linux_environ[envsize + 1] = NULL;
+#else
+    // Reset the environment
+    envsize = 2;
+    char** linux_environ = (char**)malloc(sizeof(char*) * (envsize + 3));
+
+    int i = 0;
+    linux_environ[i++] = (char*)"PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/sbin";
+    linux_environ[i++] = (char*)"HOME=/home/ian";
+#endif
+
+    if (getenv("LINUX_ON_MAC") == NULL)
+    {
+        linux_environ[i++] = (char*)"LINUX_ON_MAC=1";
+    }
+
+    if (getenv("OSXHOME") == NULL)
+    {
+        string osxhome = string("OSXHOME=") + getenv("HOME");
+        linux_environ[i++] = strdup(osxhome.c_str());
+    }
+
+    linux_environ[i] = NULL;
 
     // Set up brk pointer
     m_brk = m_elf->getEnd();
@@ -231,7 +264,7 @@ bool LineProcess::start(int argc, char** argv)
 #endif
 
     m_mainThread = new MainThread(this);
-    m_mainThread->start(argc, argv);
+    m_mainThread->start(argc, argv, linux_environ);
 
     return requestLoop();
 }
@@ -326,23 +359,29 @@ void LineProcess::printregs(ucontext_t* ucontext)
 
 void LineProcess::error(int sig, siginfo_t* info, ucontext_t* ucontext)
 {
+    uint64_t rip = ucontext->uc_mcontext->__ss.__rip;
+
     log(
-        "error: sig=%d, errno=%d, address=%p",
+        "error: sig=%d, errno=%d, address=%p, rip=%p, patched=%d",
         sig,
         info->si_errno,
-        info->si_addr);
+        info->si_addr,
+        rip,
+        m_patcher.isPatched(rip));
     printregs(ucontext);
 
-    uint64_t rip = ucontext->uc_mcontext->__ss.__rip;
-    if (rip < IMAGE_BASE && !m_patcher.isPatched(rip))
+/*
+    if (rip > 4096 && rip < IMAGE_BASE && !m_patcher.isPatched(rip))
     {
         // HACK HACK HACK
         log("Failed in unpatched code! ATTEMPTING TO PATCH, THIS MIGHT FAIL");
         m_patcher.patch(ucontext->uc_mcontext->__ss.__rip);
         return;
     }
+*/
 
-    exit(1);
+    fprintf(stderr, "line: Received signal %d\n", sig);
+    abort();
 }
 
 uint64_t LineProcess::getRegister(x86_reg_t reg, ucontext_t* ucontext)
@@ -376,16 +415,48 @@ uint64_t LineProcess::getRegister(x86_reg_t reg, ucontext_t* ucontext)
 
 void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
 {
-    uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip);
-    //log("trap: %p: Trapped!", addr);
-    if (addr[-1] != 0xcc)
+    uint8_t* addr = (uint8_t*)(ucontext->uc_mcontext->__ss.__rip - 1);
+
+    if (m_line->getConfigTrace() && addr > (uint8_t*)IMAGE_BASE)
     {
-        log("trap: %p: ERROR: Trap in non patched code");
-        exit(255);
+        return;
+    }
+
+    if (m_line->getConfigTrace())
+    {
+        x86_insn_t insn;
+        x86_disasm((unsigned char*)addr, 0x10000, (uint64_t)addr, 0, &insn );
+        char line[4096];
+        x86_format_insn(&insn, line, 4096, att_syntax);
+        log("trace: %p: %s", addr, line);
+    }
+ 
+    if (*addr != 0xcc)
+    {
+        if (m_line->getConfigTrace())
+        {
+            return;
+        }
+        else
+        {
+            log("trap: %p: ERROR: Trap in non patched code");
+            exit(255);
+        }
     }
 
     uint64_t patchedAddr = ucontext->uc_mcontext->__ss.__rip - 1;
     Patch* patch = m_patcher.getPatch(patchedAddr);
+    if (patch == NULL)
+    {
+        Logger::error("Invalid patch: address=%p", patchedAddr);
+        x86_insn_t insn;
+        x86_disasm((unsigned char*)addr, 0x10000, (uint64_t)addr, 0, &insn );
+        char line[4096];
+        x86_format_insn(&insn, line, 4096, att_syntax);
+        log("trace: %p: %s", addr, line);
+ 
+return;
+    }
 
     switch (patch->type)
     {
@@ -491,6 +562,7 @@ void LineProcess::trap(siginfo_t* info, ucontext_t* ucontext)
                 ucontext->uc_mcontext->__ss.__rip = targetAddr;
                 if (patch->insn.type == insn_jmp)
                 {
+                    // No return address
                 }
                 else if (patch->insn.type == insn_jcc)
                 {
