@@ -11,6 +11,7 @@
 #include "logger.h"
 
 #define LINUX_EAGAIN 11
+#define LINUX_ENOTEMPTY 39
 
 struct LinuxSocket
 {
@@ -101,6 +102,7 @@ class LinuxKernel : Logger
     SYSCALL_DEFINE(fchdir);
     SYSCALL_DEFINE(rename);
     SYSCALL_DEFINE(mkdir);
+    SYSCALL_DEFINE(rmdir);
     SYSCALL_DEFINE(creat);
     SYSCALL_DEFINE(link);
     SYSCALL_DEFINE(unlink);
@@ -126,6 +128,7 @@ class LinuxKernel : Logger
     SYSCALL_DEFINE(setrlimit);
     SYSCALL_DEFINE(gettid);
     SYSCALL_DEFINE(getxattr);
+    SYSCALL_DEFINE(time);
     SYSCALL_DEFINE(futex);
     SYSCALL_DEFINE(set_tid_address);
     SYSCALL_DEFINE(fadvise64);
@@ -134,6 +137,8 @@ class LinuxKernel : Logger
     SYSCALL_DEFINE(tgkill);
     SYSCALL_DEFINE(utimes);
     SYSCALL_DEFINE(openat);
+    SYSCALL_DEFINE(newfstatat);
+    SYSCALL_DEFINE(unlinkat);
 };
 
 #endif

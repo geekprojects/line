@@ -82,7 +82,7 @@
     &LinuxKernel::sys_fchdir,	// 81: sys_fchdir unsigned int fd
     &LinuxKernel::sys_rename,	// 82: sys_rename const char *oldname,const char *newname
     &LinuxKernel::sys_mkdir,	// 83: sys_mkdir const char *pathname,int mode
-    &LinuxKernel::sys_notimplemented,	// 84: sys_rmdir const char *pathname
+    &LinuxKernel::sys_rmdir,	// 84: sys_rmdir const char *pathname
     &LinuxKernel::sys_creat,	// 85: sys_creat const char *pathname,int mode
     &LinuxKernel::sys_link,	// 86: sys_link const char *oldname,const char *newname
     &LinuxKernel::sys_unlink,	// 87: sys_unlink const char *pathname
@@ -199,7 +199,7 @@
     &LinuxKernel::sys_notimplemented,	// 198: sys_lremovexattr const char *pathname,const char *name
     &LinuxKernel::sys_notimplemented,	// 199: sys_fremovexattr int fd,const char *name
     &LinuxKernel::sys_notimplemented,	// 200: sys_tkill pid_t pid,ing sig
-    &LinuxKernel::sys_notimplemented,	// 201: sys_time time_t *tloc
+    &LinuxKernel::sys_time,	// 201: sys_time time_t *tloc
     &LinuxKernel::sys_futex,	// 202: sys_futex u32 *uaddr,int op,u32 val,struct timespec *utime,u32 *uaddr2,u32 val3
     &LinuxKernel::sys_notimplemented,	// 203: sys_sched_setaffinity pid_t pid,unsigned int len,unsigned long *user_mask_ptr
     &LinuxKernel::sys_notimplemented,	// 204: sys_sched_getaffinity pid_t pid,unsigned int len,unsigned long *user_mask_ptr
@@ -260,8 +260,8 @@
     &LinuxKernel::sys_notimplemented,	// 259: sys_mknodat int dfd,const char *filename,int mode,unsigned dev
     &LinuxKernel::sys_notimplemented,	// 260: sys_fchownat int dfd,const char *filename,uid_t user,gid_t group,int flag
     &LinuxKernel::sys_notimplemented,	// 261: sys_futimesat int dfd,const char *filename,struct timeval *utimes
-    &LinuxKernel::sys_notimplemented,	// 262: sys_newfstatat int dfd,const char *filename,struct stat *statbuf,int flag
-    &LinuxKernel::sys_notimplemented,	// 263: sys_unlinkat int dfd,const char *pathname,int flag
+    &LinuxKernel::sys_newfstatat,	// 262: sys_newfstatat int dfd,const char *filename,struct stat *statbuf,int flag
+    &LinuxKernel::sys_unlinkat,	// 263: sys_unlinkat int dfd,const char *pathname,int flag
     &LinuxKernel::sys_notimplemented,	// 264: sys_renameat int oldfd,const char *oldname,int newfd,const char *newname
     &LinuxKernel::sys_notimplemented,	// 265: sys_linkat int oldfd,const char *oldname,int newfd,const char *newname,int flags
     &LinuxKernel::sys_notimplemented,	// 266: sys_symlinkat const char *oldname,int newfd,const char *newname

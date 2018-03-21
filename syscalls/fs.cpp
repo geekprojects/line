@@ -3,12 +3,15 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/param.h>
 #include <sys/mount.h>
 
 #include "kernel.h"
 #include "fs.h"
+#include "io.h"
 
 using namespace std;
 
@@ -100,6 +103,39 @@ SYSCALL_METHOD(fstat)
     }
 #ifdef DEBUG
     log("execSyscall: sys_stat: res=%d, errno=%d", res, err);
+#endif
+    syscallErrnoResult(ucontext, res, res == 0, err);
+
+    return true;
+}
+
+SYSCALL_METHOD(newfstatat)
+{
+    uint64_t fd = ucontext->uc_mcontext->__ss.__rdi;
+    const char* filename = (const char*)(ucontext->uc_mcontext->__ss.__rsi);
+    linux_stat* linux_stat = (struct linux_stat*)(ucontext->uc_mcontext->__ss.__rdx);
+
+    char* osx_filename = m_fileSystem.path2osx(filename);
+
+if (fd == LINUX_AT_FDCWD)
+{
+fd = AT_FDCWD;
+}
+
+#ifdef DEBUG
+    log("execSyscall: sys_newfstatat: fd=%lld, filename=%s (%s), linux_stat=%p", fd, filename, osx_filename, linux_stat);
+#endif
+
+    struct stat osx_stat;
+int res = fstatat(fd, osx_filename, &osx_stat, 0);
+int err = errno;
+
+    if (res == 0)
+    {
+        stat2linux(osx_stat, linux_stat);
+    }
+#ifdef DEBUG
+    log("execSyscall: sys_newfstatat: res=%d, errno=%d", res, err);
 #endif
     syscallErrnoResult(ucontext, res, res == 0, err);
 
@@ -247,9 +283,45 @@ SYSCALL_METHOD(mkdir)
     log("sys_mkdir: pathname=%s, mode=0x%x", pathname, mode);
 #endif
 
-    int res = mkdir(pathname, mode);
+    char* osxPathName = m_fileSystem.path2osx(pathname);
+    if (osxPathName == NULL)
+    {
+        return false;
+    }
+
+    int res = mkdir(osxPathName, mode);
+
+
     int err = errno;
     syscallErrnoResult(ucontext, res, res == 0, err);
+
+free(osxPathName);
+
+    return true;
+}
+
+SYSCALL_METHOD(rmdir)
+{
+    const char* pathname = (char*)(ucontext->uc_mcontext->__ss.__rdi);
+#ifdef DEBUG
+    log("sys_rmdir: pathname=%s", pathname);
+#endif
+
+    char* osxPathName = m_fileSystem.path2osx(pathname);
+    if (osxPathName == NULL)
+    {
+        return false;
+    }
+
+    int res = rmdir(osxPathName);
+    int err = errno;
+    syscallErrnoResult(ucontext, res, res == 0, err);
+
+#ifdef DEBUG
+    log("sys_rmdir: res=%d, errno=%d", res, err);
+#endif
+
+    free(osxPathName);
 
     return true;
 }
@@ -283,6 +355,35 @@ SYSCALL_METHOD(unlink)
 
     return true;
 }
+
+SYSCALL_METHOD(unlinkat)
+{
+    int fd = ucontext->uc_mcontext->__ss.__rdi;
+    const char* pathname = (char*)(ucontext->uc_mcontext->__ss.__rsi);
+
+if (fd == LINUX_AT_FDCWD)
+{
+fd = AT_FDCWD;
+}
+
+    char* osx_filename = m_fileSystem.path2osx(pathname);
+
+#ifdef DEBUG
+    log("sys_unlinkat: pathname=%s (%s)", pathname, osx_filename);
+#endif
+
+    int res = unlinkat(fd, osx_filename, AT_REMOVEDIR);
+    int err = errno;
+
+#ifdef DEBUG
+    log("sys_unlink: res=%d, errno=%d", res, err);
+#endif
+
+    syscallErrnoResult(ucontext, res, res == 0, err);
+
+    return true;
+}
+
 
 SYSCALL_METHOD(readlink)
 {
@@ -444,8 +545,24 @@ SYSCALL_METHOD(chown)
     log("sys_chown: path=%p->%p, uid=%d, gid=%d\n", path, osxpath, uid, gid);
 #endif
 
+    uid_t thisuid = getuid();
+    uid_t thisgid = getgid();
+    log("sys_chown:  this uid=%d, gid=%d", thisuid, thisgid);
+    if (uid == thisuid && gid == thisgid)
+    {
+        int res;
+        res = chown(osxpath, uid, thisgid);
+        int err = errno;
+        log("sys_chown: res=%d, err=%d\n", res, err);
+        syscallErrnoResult(ucontext, res, res == 0, err);
+    }
+    else
+    {
+        log("sys_chown: Not chowning to other user!");
+        ucontext->uc_mcontext->__ss.__rax = 0;
+    }
+
     free(osxpath);
-    ucontext->uc_mcontext->__ss.__rax = 0;
     return true;
 
 /*

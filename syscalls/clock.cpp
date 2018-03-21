@@ -52,3 +52,23 @@ SYSCALL_METHOD(clock_gettime)
     return true;
 }
 
+SYSCALL_METHOD(time)
+{
+    time_t* timeptr = (time_t*)(ucontext->uc_mcontext->__ss.__rdi);
+
+time_t t = time(NULL);
+
+//#ifdef DEBUG
+    log("sys_time: time=%p", timeptr);
+//#endif
+
+if (timeptr != NULL)
+{
+*timeptr = t;
+}
+
+    ucontext->uc_mcontext->__ss.__rax = t;
+
+return true;
+}
+

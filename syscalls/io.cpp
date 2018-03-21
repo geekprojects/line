@@ -436,6 +436,10 @@ SYSCALL_METHOD(fcntl)
     {
         ucontext->uc_mcontext->__ss.__rax = 0;
     }
+    else if (command == F_GETLK)
+    {
+        ucontext->uc_mcontext->__ss.__rax = 0;
+    }
     else
     {
         int res = fcntl(fd, command, arg);
