@@ -37,7 +37,7 @@ class Patcher : Logger
  private:
     LineProcess* m_process;
 
-    std::map<uint64_t, Patch> m_patches;
+    std::map<uint64_t, Patch*> m_patches;
     std::vector<PatchRange*> m_patchRanges;
 
     void patch(PatchType type, x86_insn_t insn, uint64_t pos);

@@ -3,6 +3,8 @@
 
 #include "patcher.h"
 
+#define DEBUG_PATCH
+
 using namespace std;
 
 Patcher::Patcher(LineProcess* process) : Logger("Patcher")
@@ -16,7 +18,6 @@ Patcher::~Patcher()
 
 bool Patcher::patch(uint64_t start)
 {
-    uint64_t end = 0;
     uint64_t ptr = start;
 
     if (
@@ -44,11 +45,11 @@ bool Patcher::patch(uint64_t start)
         if (*p == 0xcc)
         {
             log("patch: found patch instruction: 0x%llx", ptr);
-            if (end > ptr)
+            if (range->end > ptr)
             {
-                log("patch: But I think the end is beyond 0x%llx", end);
+                log("patch: But I think the end is beyond 0x%llx", range->end);
 
-                if (isPatched(end))
+                if (isPatched(range->end))
                 {
                     log("patch: But that's ok because the end is already patched");
                 }
@@ -59,7 +60,7 @@ bool Patcher::patch(uint64_t start)
                     for (it = m_patchRanges.begin(); it != m_patchRanges.end(); it++)
                     {
                         PatchRange* itrange = *it;
-                        if (itrange->end <= end)// && itrange->start >= end)
+                        if (itrange->end <= range->end)// && itrange->start >= end)
                         {
                             if (closest == NULL || itrange->end > closest->end)
                             {
@@ -92,7 +93,15 @@ bool Patcher::patch(uint64_t start)
             return false;
         }
 
-        range->end = ptr + size;
+        uint64_t end = range->end;
+        if (ptr + size > range->end)
+        {
+            range->end = ptr + size;
+        }
+
+#if 0
+        log("patch: 0x%llx-0x%llx: 0x%llx", range->start, range->end, ptr);
+#endif
 
 #if 1
         char line[4096];
@@ -110,7 +119,7 @@ bool Patcher::patch(uint64_t start)
 
         if (insn.type == insn_return)
         {
-            if (end < ptr)
+            if (end <= ptr)
             {
 #ifdef DEBUG_PATCH
                 log("patch: %p: Found end of function");
@@ -158,9 +167,9 @@ bool Patcher::patch(uint64_t start)
 #ifdef DEBUG_PATCH
                 log("patch: 0x%llx: %s: near branch to 0x%llx", ptr, insntype, destAddr);
 #endif
-                if (end < destAddr)
+                if (range->end < destAddr)
                 {
-                    end = destAddr;
+                    range->end = destAddr;
                 }
                 else if (destAddr < start)
                 {
@@ -203,12 +212,14 @@ bool Patcher::patch(uint64_t start)
 void Patcher::patch(PatchType type, x86_insn_t insn, uint64_t pos)
 {
     uint8_t* p = (uint8_t*)pos;
+
     uint8_t original = *p;
     *p = 0xcc;
-    Patch patch;
-    patch.type = type;
-    patch.insn = insn;
-    patch.patchedByte = original;
+
+    Patch* patch = new Patch();
+    patch->type = type;
+    patch->insn = insn;
+    patch->patchedByte = original;
     m_patches.insert(make_pair(pos, patch));
 }
 
@@ -242,13 +253,13 @@ bool Patcher::isPatched(uint64_t ptr)
 
 Patch* Patcher::getPatch(uint64_t patchedAddr)
 {
-    map<uint64_t, Patch>::iterator it;
+    map<uint64_t, Patch*>::iterator it;
     it = m_patches.find(patchedAddr);
     if (it == m_patches.end())
     {
-        log("trap: Invalid patch!?");
+        log("trap: Invalid patch? patchedAddr=%p", patchedAddr);
         exit(255);
     }
-    return &(it->second);
+    return it->second;
 }
 
