@@ -15,7 +15,7 @@ MainThread::~MainThread()
 {
 }
 
-void MainThread::entry(int argc, char** argv)
+void MainThread::entry(int argc, char** argv, char** env)
 {
     map<string, ElfLibrary*> libs = m_process->getExec()->getLibraries();
     //singleStep(true);
@@ -27,12 +27,17 @@ void MainThread::entry(int argc, char** argv)
     {
         if (it->first != "libpthread.so.0")
         {
-            it->second->entry(argc, argv, environ);
+            it->second->entry(argc, argv, env);
         }
     }
 
+    if (m_process->getLine()->getConfigTrace())
+    {
+        singleStep(true);
+    }
+
     // Execute the ELF (Note, no Elves were harmed...)
-    m_process->getExec()->entry(argc, argv, environ);
+    m_process->getExec()->entry(argc, argv, env);
 }
 
 

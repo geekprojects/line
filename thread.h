@@ -27,9 +27,9 @@ class LineThread
     pthread_t getPThread() { return m_pthread; }
     task_t getTask() { return m_task; }
 
-    void start(int argc, char** argv);
-    void initialEntry(int argc, char** argv);
-    virtual void entry(int argc, char** argv);
+    void start(int argc, char** argv, char** environ);
+    void initialEntry(int argc, char** argv, char** environ);
+    virtual void entry(int argc, char** argv, char** environ);
 
     void singleStep(bool enable);
 

@@ -11,7 +11,7 @@ class MainThread : public LineThread
     MainThread(LineProcess* process);
     virtual ~MainThread();
 
-    virtual void entry(int argc, char** argv);
+    virtual void entry(int argc, char** argv, char** environ);
 };
 
 #endif

@@ -19,16 +19,17 @@ struct tramponlinedata
     LineThread* thread;
     int argc;
     char** argv;
+    char** env;
 };
 
 static void* trampoline(void* args)
 {
     tramponlinedata* data = (tramponlinedata*)args;
-    data->thread->initialEntry(data->argc, data->argv);
+    data->thread->initialEntry(data->argc, data->argv, data->env);
     return NULL;
 }
 
-void LineThread::start(int argc, char** argv)
+void LineThread::start(int argc, char** argv, char** env)
 {
     tramponlinedata* data;
     data = new tramponlinedata();
@@ -36,21 +37,22 @@ void LineThread::start(int argc, char** argv)
     data->thread = this;
     data->argc = argc;
     data->argv = argv;
+    data->env = env;
 
     // Create ELF Thread
     pthread_create(&m_pthread, NULL, trampoline, data);
 }
 
-void LineThread::initialEntry(int argc, char** argv)
+void LineThread::initialEntry(int argc, char** argv, char** env)
 {
     m_pthread = pthread_self();
     m_task = mach_thread_self();
     m_process->addThread(this);
 
-    entry(argc, argv);
+    entry(argc, argv, env);
 }
 
-void LineThread::entry(int argc, char** argv)
+void LineThread::entry(int argc, char** argv, char** env)
 {
     printf("LineThread::entry: Here!\n");
 }
