@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 
+#include <string>
+
 enum LoggerLevel
 {
     LOG_DEBUG,
@@ -14,13 +16,18 @@ enum LoggerLevel
 class LoggerWriter
 {
  private:
+    std::string m_logDir;
     FILE* m_log;
+
+    void setLogDir(std::string logDir);
 
  public:
     LoggerWriter();
     virtual ~LoggerWriter();
 
     void write(LoggerLevel level, const char* system, const char* __format, va_list ap);
+
+    static void init(std::string logDir);
 };
 
 class Logger
