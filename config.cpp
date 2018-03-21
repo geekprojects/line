@@ -3,7 +3,7 @@
 
 using namespace std;
 
-Config::Config()
+Config::Config() : Logger("Config")
 {
 }
 
@@ -15,10 +15,11 @@ bool Config::load(string base)
 {
     m_containerBase = base;
     string configpath = m_containerBase + "/config.yaml";
+    log("load: configpath=%s", configpath.c_str());
     m_config = YAML::LoadFile(configpath.c_str());
     if (!m_config)
     {
-        printf("Config::load: Failed to load config!\n");
+        error("load: Failed to load config!");
         return false;
     }
 
@@ -37,14 +38,14 @@ vector<pair<string, string> > Config::getMounts()
         YAML::const_iterator mountIt;
         for (mountIt = mountsNode.begin(); mountIt != mountsNode.end(); ++mountIt)
         {
-string mount = mountIt->first.as<std::string>();
-string dest = mountIt->second.as<std::string>();
-if (dest.length() > 0 && dest.at(0) != '/')
-{
-dest = m_containerBase + "/" + dest;
-}
+            string mount = mountIt->first.as<std::string>();
+            string dest = mountIt->second.as<std::string>();
+            if (dest.length() > 0 && dest.at(0) != '/')
+            {
+                dest = m_containerBase + "/" + dest;
+            }
             mounts.push_back(make_pair(mount, dest));
-            printf("Config::getMounts: mount: %s -> %s\n", mount.c_str(), dest.c_str());
+            log("getMounts: mount: %s -> %s", mount.c_str(), dest.c_str());
         }
 
     }
