@@ -26,15 +26,17 @@ bool LinuxKernel::syscall(uint64_t syscall, ucontext_t* ucontext)
 {
     if (syscall >= (sizeof(m_syscalls) / sizeof(syscall_t)))
     {
-        log("LinuxKernel::syscall: Invalid syscall: %lld\n", syscall);
+        log("LinuxKernel::syscall: Invalid syscall: %lld at %p", syscall, (void*)ucontext->uc_mcontext->__ss.__rip);
         m_process->printregs(ucontext);
         exit(255);
     }
+#ifdef DEBUG
+    log("LinuxKernel::syscall: %lld, rip=%p", syscall, ucontext->uc_mcontext->__ss.__rip);
+#endif
     bool res = (this->*m_syscalls[syscall])(syscall, ucontext);
     if (!res)
     {
-        log("LinuxKernel::syscall: syscall failed: %lld", syscall);
-        m_process->printregs(ucontext);
+        error("LinuxKernel::syscall: syscall failed: %lld at %p", syscall, (void*)ucontext->uc_mcontext->__ss.__rip);
         exit(255);
     }
     return true;
@@ -63,6 +65,10 @@ void LinuxKernel::syscallErrnoResult(ucontext_t* ucontext, uint64_t res, bool su
         if (err == EAGAIN)
         {
             linux_errno = LINUX_EAGAIN;
+        }
+        if (err == ENOTEMPTY)
+        {
+            linux_errno = LINUX_ENOTEMPTY;
         }
         else if (err <= 34)
         {
